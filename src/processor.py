@@ -1,5 +1,10 @@
 import re
 import polars as pl
+import logging
+
+# Configuração do log
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 def parse_logs(file_path):
     regex = r'(?P<ip>\S+) - - \[(?P<date>.*?)\] "GET (?P<endpoint>.*?) .*?" (?P<status>\d+) (?P<size>\d+)'
@@ -16,32 +21,32 @@ def parse_logs(file_path):
                     corrupted_rows += 1
         
         if corrupted_rows > 0:
-            print(f"⚠️ Aviso: {corrupted_rows} linhas ignoradas por falha no Regex.")
+            logger.warning(f"{corrupted_rows} linhas ignoradas por falha no formato.")
             
         return extracted_data
     except FileNotFoundError:
-        print(f"❌ Erro: Arquivo {file_path} não encontrado.")
+        logger.error(f"Arquivo {file_path} não encontrado.")
         return []
-    
+
 def transform_logs(data_list):
     if not data_list:
+        logger.warning("Nenhum dado para transformar.")
         return pl.DataFrame()
 
-    # Converter para DataFrame
     df = pl.DataFrame(data_list)
 
+
+    required_cols = {"ip", "status", "size", "endpoint"}
+    if not required_cols.issubset(set(df.columns)):
+        logger.error("Esquema de dados inválido. Colunas faltando.")
+        raise ValueError("Dados corrompidos: colunas necessárias ausentes.")
+
+   
     df = df.with_columns([
         pl.col("status").cast(pl.Int32),
         pl.col("size").cast(pl.Int32),
         (pl.col("status") >= 400).alias("is_error")
     ])
 
-    top_ips = df.group_by("ip").count().sort("count", descending=True).head(5)
-    print("\n--- Top 5 IPs ---")
-    print(top_ips)
-
-    top_errors = df.filter(pl.col("is_error") == True).group_by("endpoint").count().sort("count", descending=True)
-    print("\n--- Endpoints com Erros ---")
-    print(top_errors)
-
+    logger.info("Transformação concluída com sucesso.")
     return df
