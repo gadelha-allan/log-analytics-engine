@@ -22,3 +22,26 @@ def parse_logs(file_path):
     except FileNotFoundError:
         print(f"❌ Erro: Arquivo {file_path} não encontrado.")
         return []
+    
+def transform_logs(data_list):
+    if not data_list:
+        return pl.DataFrame()
+
+    # Converter para DataFrame
+    df = pl.DataFrame(data_list)
+
+    df = df.with_columns([
+        pl.col("status").cast(pl.Int32),
+        pl.col("size").cast(pl.Int32),
+        (pl.col("status") >= 400).alias("is_error")
+    ])
+
+    top_ips = df.group_by("ip").count().sort("count", descending=True).head(5)
+    print("\n--- Top 5 IPs ---")
+    print(top_ips)
+
+    top_errors = df.filter(pl.col("is_error") == True).group_by("endpoint").count().sort("count", descending=True)
+    print("\n--- Endpoints com Erros ---")
+    print(top_errors)
+
+    return df
