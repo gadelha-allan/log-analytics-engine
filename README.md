@@ -28,7 +28,7 @@ Projeto de Engenharia de Dados focado no processamento de logs de servidor não 
 
 1. Clone o repositório:
    ```bash
-   git clone https://github.com/seu-usuario/log-analytics-engine.git
+   git clone https://github.com/gadelha-allan/log-analytics-engine.git
    cd log-analytics-engine
    ```
 
