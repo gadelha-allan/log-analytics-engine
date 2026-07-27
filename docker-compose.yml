@@ -1,0 +1,7 @@
+version: '3.8'
+services:
+  log-engine:
+    build: .
+    container_name: log-analytics-engine
+    volumes:
+      - ./data:/app/data
