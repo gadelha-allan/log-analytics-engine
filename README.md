@@ -18,6 +18,7 @@ Pipeline de Engenharia de Dados que converte logs de acesso não estruturados em
 - [Tecnologias Utilizadas](#tecnologias-utilizadas)
 - [Pré-requisitos](#pré-requisitos)
 - [Instalação e Execução](#instalação-e-execução)
+- [Executando os Testes](#executando-os-testes)
 - [Dados: Entrada e Saída](#dados-entrada-e-saída)
 - [Schema dos Dados Processados](#schema-dos-dados-processados)
 - [Performance](#performance)
@@ -56,6 +57,7 @@ log-analytics-engine/
 ├── main.py              # Orquestra o pipeline: extract → transform → load
 ├── generator.py         # Gera logs sintéticos (Common Log Format)
 ├── processor.py         # Parsing via regex + transformações com Polars
+├── test_processor.py    # Testes automatizados (pytest) do processor.py
 ├── requirements.txt     # Dependências Python (polars, pyarrow)
 ├── Dockerfile           # Imagem baseada em python:3.9-slim
 ├── docker-compose.yml   # Orquestra o container e monta o volume ./data
@@ -108,6 +110,34 @@ docker-compose up --build
 
 O `docker-compose.yml` monta o volume `./data:/app/data`, então os arquivos gerados e processados permanecem disponíveis no host mesmo depois que o container é removido.
 
+## Executando os Testes
+
+O projeto conta com uma suíte de testes automatizados (`test_processor.py`) que cobre o parsing via regex e as transformações aplicadas em `processor.py`.
+
+### Executando a suíte
+
+O `pytest` já está listado no `requirements.txt`, então basta ter as dependências instaladas (seção [Instalação e Execução](#instalação-e-execução)). Na raiz do projeto, com o ambiente virtual ativado:
+
+```bash
+pytest
+```
+
+Para ver o resultado de cada teste individualmente:
+
+```bash
+pytest -v
+```
+
+### O que é validado
+
+- Extração dos campos `ip`, `endpoint`, `status` e `size` via regex.
+- Descarte de linhas fora do padrão esperado, via `drop_nulls()`.
+- Regra `is_error` (`True` quando `status >= 400`).
+- Tipagem das colunas (`Int32`, `Date`, `Boolean`).
+- Conversão da data original do log para o `Date` usado em `dt_partition`.
+
+Os testes usam arquivos temporários (via `tempfile`) como fixture, criados e removidos automaticamente a cada execução — nada é gravado em `data/raw`.
+
 ## Dados: Entrada e Saída
 
 - **Entrada:** `data/raw/server.log`. Se o arquivo não existir, `main.py` chama `generate_mock_logs()` e gera **5.000.000** de linhas sintéticas automaticamente (valor definido em `main.py`; a função gera 1.000 linhas por padrão se for chamada isoladamente, sem argumentos).
@@ -148,3 +178,4 @@ Benchmark real, executado localmente com o volume padrão do projeto (5 milhões
 | Geração inicial dos logs sintéticos (etapa única) | 27,3 s |
 
 *Medido em container Linux, Python 3.12, Polars 1.43.1. Os números variam conforme hardware e versões das bibliotecas.*
+
