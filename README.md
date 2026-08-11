@@ -32,7 +32,7 @@ Este projeto simula um cenário comum de engenharia de dados: transformar logs d
 - **Estrutura** — logs são texto livre; extrair campos exige um parsing confiável.
 - **Consulta analítica** — formatos colunares como Parquet aceleram filtros e agregações.
 
-O pipeline gera (ou consome) um arquivo de log, extrai os campos via regex, tipa e enriquece os dados com Polars, e grava um dataset Parquet particionado por data — pronto para ser lido por ferramentas como DuckDB, Spark ou o próprio Polars.
+O pipeline gera (ou consome) um arquivo de log, extrai os campos via regex, tipa e enriquece os dados com Polars, valida a qualidade dos registros e grava um dataset Parquet particionado por data — pronto para ser lido por ferramentas como DuckDB, Spark ou o próprio Polars.
 
 ## Arquitetura do Pipeline
 
@@ -40,12 +40,13 @@ O pipeline gera (ou consome) um arquivo de log, extrai os campos via regex, tipa
 flowchart LR
     A[server.log] -->|scan_csv lazy| B[Extract: regex parsing]
     B --> C[Transform: cast e is_error]
-    C --> D[drop_nulls]
-    D --> E[(Parquet particionado por data)]
+    C --> D[Data Quality: valida IP e status]
+    D --> E[drop_nulls]
+    E --> F[(Parquet particionado por data)]
 ```
 
 1. **Extract** — `generator.py` cria um log sintético caso `data/raw/server.log` ainda não exista. `processor.py` faz a leitura *lazy* (`pl.scan_csv`) e extrai os campos `ip`, `date`, `endpoint`, `status` e `size` com uma única expressão regular (`str.extract_groups`).
-2. **Transform** — `status` e `size` são convertidos para `Int32`; `date` é parseado como `Datetime` e reduzido a `dt_partition` (data); a flag booleana `is_error` marca requisições com `status >= 400`; linhas que não casam com o regex são descartadas com `drop_nulls()`.
+2. **Transform & Data Quality** — `status` e `size` são convertidos para `Int32`; `date` é parseado como `Datetime` e reduzido a `dt_partition` (data); a flag booleana `is_error` marca requisições com `status >= 400`. Em seguida, um filtro rigoroso de **Qualidade de Dados** é aplicado: apenas requisições com IP em formato IPv4 válido e status HTTP entre 100 e 599 são mantidas. Linhas inválidas ou que não casam com o regex são descartadas com `drop_nulls()`.
 3. **Load** — `main.py` apaga qualquer saída anterior em `data/processed/logs_lake` e grava o `DataFrame` final como Parquet particionado por `dt_partition`, usando o motor PyArrow.
 
 Todo o pipeline roda em modo *lazy* até o `.collect()` final, permitindo que o Polars otimize o plano de execução antes de processar os dados de fato.
@@ -112,20 +113,14 @@ O `docker-compose.yml` monta o volume `./data:/app/data`, então os arquivos ger
 
 ## Executando os Testes
 
-O projeto conta com uma suíte de testes automatizados (`test_processor.py`) que cobre o parsing via regex e as transformações aplicadas em `processor.py`.
+O projeto conta com uma suíte de testes automatizados (`test_processor.py`) que cobre o parsing via regex, as transformações aplicadas em `processor.py` e os filtros de qualidade de dados.
 
-### Executando a suíte
+### Executando os Testes Unitários
 
 O `pytest` já está listado no `requirements.txt`, então basta ter as dependências instaladas (seção [Instalação e Execução](#instalação-e-execução)). Na raiz do projeto, com o ambiente virtual ativado:
 
 ```bash
-pytest
-```
-
-Para ver o resultado de cada teste individualmente:
-
-```bash
-pytest -v
+pytest test_processor.py -v
 ```
 
 ### O que é validado
@@ -135,6 +130,8 @@ pytest -v
 - Regra `is_error` (`True` quando `status >= 400`).
 - Tipagem das colunas (`Int32`, `Date`, `Boolean`).
 - Conversão da data original do log para o `Date` usado em `dt_partition`.
+- **Qualidade de Dados**: descarte de registros com IP fora do formato IPv4 válido.
+- **Qualidade de Dados**: descarte de registros com status HTTP fora da faixa 100–599.
 
 Os testes usam arquivos temporários (via `tempfile`) como fixture, criados e removidos automaticamente a cada execução — nada é gravado em `data/raw`.
 
@@ -149,10 +146,10 @@ Os testes usam arquivos temporários (via `tempfile`) como fixture, criados e re
 
 | Coluna | Tipo | Descrição |
 |---|---|---|
-| `ip` | String | Endereço IP de origem da requisição |
+| `ip` | String | Endereço IP de origem da requisição (validado como IPv4) |
 | `date` | String | Timestamp original extraído do log |
 | `endpoint` | String | Rota acessada (ex.: `/login`, `/checkout`) |
-| `status` | Int32 | Código de status HTTP da resposta |
+| `status` | Int32 | Código de status HTTP da resposta (validado no intervalo 100–599) |
 | `size` | Int32 | Tamanho da resposta em bytes |
 | `dt_partition` | Date | Data derivada de `date`; chave de particionamento do Parquet |
 | `is_error` | Boolean | `true` quando `status >= 400` |
