@@ -2,6 +2,7 @@ import os
 import time
 import logging
 import polars as pl
+from polars.exceptions import PolarsError
 from generator import generate_mock_logs
 from processor import process_logs
 
@@ -45,7 +46,7 @@ def run_pipeline():
     except FileNotFoundError:
         logging.error(f"Arquivo não encontrado: {raw_path}")
         raise
-    except pl.PolarsError as e:
+    except PolarsError as e:
         logging.error(f"Erro no Polars: {e}")
         raise
     except Exception as e:
