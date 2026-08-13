@@ -1,7 +1,14 @@
 version: '3.8'
 services:
-  log-engine:
+  airflow-orchestrator:
     build: .
-    container_name: log-analytics-engine
+    container_name: log-airflow-orchestrator
+    ports:
+      - "8080:8080"
     volumes:
-      - ./data:/app/data
+      - ./data:/opt/airflow/data
+      - ./dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+    environment:
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    command: standalone
