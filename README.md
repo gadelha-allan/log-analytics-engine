@@ -21,6 +21,7 @@ Pipeline de Engenharia de Dados que converte logs de acesso não estruturados em
 - [Executando os Testes](#executando-os-testes)
 - [Dados: Entrada e Saída](#dados-entrada-e-saída)
 - [Schema dos Dados Processados](#schema-dos-dados-processados)
+- [Consultas Analíticas no Data Lake](#consultas-analíticas-no-data-lake)
 - [Performance](#performance)
 
 
@@ -158,6 +159,54 @@ Exemplo de linha de log bruto (formato gerado por `generator.py`):
 
 ```
 192.168.0.1 - - [27/Jul/2026:14:32:10 +0000] "GET /api/v1/users HTTP/1.1" 200 3421
+```
+
+## Consultas Analíticas no Data Lake
+
+Os dados processados são salvos em formato **Apache Parquet particionado no padrão Hive** (`dt_partition=AAAA-MM-DD/*.parquet`), garantindo leitura *zero-copy* eficiente por motores analíticos (OLAP).
+
+### Exemplo 1: Consulta SQL com DuckDB (Leitura Direta de Parquet)
+
+O DuckDB permite consultar o Data Lake via SQL sem necessidade de um servidor de banco de dados rodando:
+
+```python
+import duckdb
+
+con = duckdb.connect()
+
+# Métricas agregadas lendo arquivos Parquet diretamente
+df_metrics = con.execute("""
+    SELECT 
+        endpoint,
+        COUNT(*) AS total_requests,
+        ROUND(AVG(size), 2) AS avg_size_bytes,
+        SUM(CASE WHEN is_error THEN 1 ELSE 0 END) AS total_errors
+    FROM 'data/processed/logs_lake/*/*.parquet'
+    GROUP BY endpoint
+    ORDER BY total_requests DESC
+""").df()
+
+print(df_metrics)
+```
+
+### Exemplo 2: Consulta com PySpark
+
+Para cenários de processamento massivo distribuído em cluster:
+
+```python
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder \
+    .appName("LogAnalytics") \
+    .getOrCreate()
+
+# O PySpark reconhece automaticamente as partições 'dt_partition' do Hive
+df = spark.read.parquet("data/processed/logs_lake/")
+
+# Agregação distribuída
+df.groupBy("endpoint", "is_error") \
+  .count() \
+  .show()
 ```
 
 ## Performance
