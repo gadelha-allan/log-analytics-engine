@@ -2,3 +2,5 @@ polars
 pyarrow
 pytest
 duckdb
+streamlit
+plotly
