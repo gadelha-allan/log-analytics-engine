@@ -6,6 +6,7 @@
 ![Polars](https://img.shields.io/badge/Polars-Data%20Processing-CD792C?logo=polars&logoColor=white)
 ![Parquet](https://img.shields.io/badge/Storage-Apache%20Parquet-50ABF1)
 ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Dashboard-Streamlit-FF4B4B?logo=streamlit&logoColor=white)
 ![License](https://img.shields.io/badge/license-not%20defined-lightgrey)
 
 Pipeline de Engenharia de Dados que converte logs de acesso não estruturados em uma base analítica pronta para consulta. Usa parsing vetorizado com **Regex + Polars** para extrair campos estruturados do log bruto e grava o resultado em **Apache Parquet** particionado por data, reduzindo o volume de armazenamento em cerca de **95%** em relação ao arquivo original.
@@ -22,6 +23,7 @@ Pipeline de Engenharia de Dados que converte logs de acesso não estruturados em
 - [Dados: Entrada e Saída](#dados-entrada-e-saída)
 - [Schema dos Dados Processados](#schema-dos-dados-processados)
 - [Consultas Analíticas no Data Lake](#consultas-analíticas-no-data-lake)
+- [Dashboard Interativo](#dashboard-interativo)
 - [Performance](#performance)
 
 
@@ -78,6 +80,8 @@ log-analytics-engine/
 | **PyArrow** | Motor de escrita e particionamento do Parquet |
 | **Apache Parquet** | Formato de armazenamento colunar e comprimido |
 | **Docker / Docker Compose** | Containerização e execução reprodutível |
+| **Streamlit** | Dashboard interativo do Data Lake |
+| **Plotly** | Gráficos interativos no dashboard |
 | **logging** (stdlib) | Rastreabilidade da execução do pipeline |
 
 ## Pré-requisitos
@@ -149,17 +153,22 @@ Os testes usam arquivos temporários (via `tempfile`) como fixture, criados e re
 |---|---|---|
 | `ip` | String | Endereço IP de origem da requisição (validado como IPv4) |
 | `date` | String | Timestamp original extraído do log |
+| `method` | String | Método HTTP da requisição (`GET`, `POST`, `PUT`, `DELETE`, etc.) |
 | `endpoint` | String | Rota acessada (ex.: `/login`, `/checkout`) |
 | `status` | Int32 | Código de status HTTP da resposta (validado no intervalo 100–599) |
 | `size` | Int32 | Tamanho da resposta em bytes |
 | `dt_partition` | Date | Data derivada de `date`; chave de particionamento do Parquet |
 | `is_error` | Boolean | `true` quando `status >= 400` |
 
-Exemplo de linha de log bruto (formato gerado por `generator.py`):
+Exemplo de linhas de log bruto (formato gerado por `generator.py`):
 
 ```
 192.168.0.1 - - [27/Jul/2026:14:32:10 +0000] "GET /api/v1/users HTTP/1.1" 200 3421
+10.0.0.5 - - [27/Jul/2026:15:00:00 +0000] "POST /login HTTP/1.1" 201 500
+172.16.0.2 - - [27/Jul/2026:15:01:45 +0000] "DELETE /api/v1/users/7 HTTP/1.1" 404 128
 ```
+
+O parser aceita qualquer método HTTP (`GET`, `POST`, `PUT`, `DELETE`, etc.).
 
 ## Consultas Analíticas no Data Lake
 
@@ -209,6 +218,28 @@ df.groupBy("endpoint", "is_error") \
   .show()
 ```
 
+## Dashboard Interativo
+
+Para visualizar o painel executivo com gráficos em tempo real sobre o Data Lake:
+
+```bash
+streamlit run dashboard.py
+```
+
+> ⚠️ Execute `python main.py` antes para garantir que o Data Lake já foi gerado em `data/processed/logs_lake/`. O dashboard exibe um aviso e para caso a pasta não exista.
+
+O painel cobre:
+
+- **KPIs globais** — total de logs processados, volume de erros, taxa de erro HTTP e tamanho médio de resposta.
+- **Top 10 endpoints** mais solicitados (gráfico de barras horizontal).
+- **Distribuição de status HTTP** (gráfico de pizza/donut).
+
+O Streamlit já está listado em `requirements.txt`. Se precisar instalar separadamente:
+
+```bash
+pip install streamlit plotly
+```
+
 ## Performance
 
 Benchmark real, executado localmente com o volume padrão do projeto (5 milhões de linhas):
@@ -224,4 +255,5 @@ Benchmark real, executado localmente com o volume padrão do projeto (5 milhões
 | Geração inicial dos logs sintéticos (etapa única) | 27,3 s |
 
 *Medido em container Linux, Python 3.12, Polars 1.43.1. Os números variam conforme hardware e versões das bibliotecas.*
+
 
