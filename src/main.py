@@ -1,7 +1,6 @@
 import os
 import time
 import logging
-import polars as pl
 from polars.exceptions import PolarsError
 from generator import generate_mock_logs
 from processor import process_logs
@@ -11,13 +10,13 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 def run_pipeline():
     raw_path = "data/raw/server.log"
     processed_dir = "data/processed/logs_lake"
-    
+
     if not os.path.exists(raw_path):
         logging.info("Gerando 5 milhões de linhas de log...")
         generate_mock_logs(raw_path, lines=5_000_000)
 
     start_time = time.perf_counter()
-    
+
     try:
         logging.info("Iniciando processamento vetorial de logs...")
         df_final = process_logs(raw_path)
@@ -29,7 +28,7 @@ def run_pipeline():
         if os.path.exists(processed_dir):
             import shutil
             shutil.rmtree(processed_dir)
-        
+
         os.makedirs(processed_dir, exist_ok=True)
 
         logging.info("Gravando Parquet particionado...")
@@ -38,7 +37,7 @@ def run_pipeline():
             use_pyarrow=True,
             pyarrow_options={"partition_cols": ["dt_partition"]}
         )
-        
+
         elapsed = time.perf_counter() - start_time
         row_count = df_final.height
         logging.info(f"Pipeline concluído em {elapsed:.2f}s — {row_count:,} linhas processadas ({row_count/elapsed:,.0f} linhas/s)")
