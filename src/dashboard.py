@@ -50,7 +50,7 @@ with col_left:
         ORDER BY requisicoes DESC
         LIMIT 10
     """).df()
-    
+
     fig_endpoints = px.bar(
         df_endpoints, 
         x="requisicoes", 
@@ -71,7 +71,7 @@ with col_right:
         GROUP BY status
         ORDER BY total DESC
     """).df()
-    
+
     fig_status = px.pie(
         df_status, 
         names="status_code", 
