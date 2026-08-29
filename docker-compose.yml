@@ -1,7 +1,23 @@
-version: '3.8'
+version: "3.8"
+
 services:
   log-engine:
     build: .
     container_name: log-analytics-engine
+    command: python -m src.main --generate --lines 5000000
     volumes:
       - ./data:/app/data
+
+  dashboard:
+    build: .
+    container_name: log-analytics-dashboard
+    command: >
+      sh -c "until [ -d /app/data/processed/logs_lake ]; do
+        echo 'Aguardando dados...'; sleep 2; done;
+      streamlit run src/dashboard.py --server.port=8501 --server.address=0.0.0.0"
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - log-engine

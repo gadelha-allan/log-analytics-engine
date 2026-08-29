@@ -1,6 +1,6 @@
-polars
-pyarrow
-pytest
-duckdb
-streamlit
-plotly
+polars==1.12.0
+pyarrow==17.0.0
+duckdb==1.1.1
+streamlit==1.39.0
+plotly==5.24.1
+faker==30.8.1
