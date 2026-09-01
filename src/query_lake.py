@@ -1,5 +1,9 @@
-import duckdb
+from __future__ import annotations
+
 import os
+
+import duckdb
+
 
 def run_analytics_queries():
     lake_path = "data/processed/logs_lake/*/*.parquet"
@@ -9,7 +13,7 @@ def run_analytics_queries():
 
     with duckdb.connect() as con:
         df_top_endpoints = con.execute(f"""
-            SELECT 
+            SELECT
                 endpoint,
                 COUNT(*) AS total_requisicoes,
                 AVG(size)::INT AS tamanho_medio_bytes
@@ -20,7 +24,7 @@ def run_analytics_queries():
         """).df()
 
         df_error_rate = con.execute(f"""
-            SELECT 
+            SELECT
                 dt_partition,
                 COUNT(*) AS total,
                 SUM(CASE WHEN is_error THEN 1 ELSE 0 END) AS erros,

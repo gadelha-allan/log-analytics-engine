@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import os
 
 import duckdb
@@ -42,12 +43,10 @@ taxa_erro = round((total_erros / total_logs) * 100, 2) if total_logs else 0.0
 
 quarantine_count = 0
 if quarantine_exists:
-    try:
+    with contextlib.suppress(Exception):
         quarantine_count = con.execute(f"""
             SELECT COUNT(*) FROM '{QUARANTINE_PATH}'
         """).fetchone()[0]
-    except Exception:
-        pass
 
 total_input = total_logs + quarantine_count
 qualidade_score = round((total_logs / total_input) * 100, 2) if total_input else 100.0
@@ -73,7 +72,7 @@ with col_left:
         ORDER BY requisicoes DESC
         LIMIT 10
     """).df()
-    
+
     fig = px.bar(
         df_endpoints,
         x="requisicoes", y="endpoint", orientation="h",
@@ -91,7 +90,7 @@ with col_right:
         GROUP BY status
         ORDER BY total DESC
     """).df()
-    
+
     fig = px.pie(
         df_status,
         names="status_code", values="total", hole=0.4,
@@ -124,7 +123,7 @@ if quarantine_exists and quarantine_count > 0:
     st.divider()
     st.subheader("Quarentena de Qualidade")
     st.warning(f"{quarantine_count:,} registros foram rejeitados.")
-    
+
     df_quarantine = con.execute(f"""
         SELECT
             rejection_reason AS motivo,
@@ -134,7 +133,7 @@ if quarantine_exists and quarantine_count > 0:
         GROUP BY rejection_reason
         ORDER BY quantidade DESC
     """).df()
-    
+
     st.dataframe(df_quarantine, use_container_width=True, hide_index=True)
 
 st.caption("Log Analytics Engine v1.0.0 | Polars + DuckDB + Parquet")
