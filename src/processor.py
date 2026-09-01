@@ -14,11 +14,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 LOG_PATTERN = (
-    r'(?P<ip>(?:25[0-5]|2[0-4]\d|[01]?\d\d?)(?:\.(?:25[0-5]|2[0-4]\d|[01]?\d\d?)){3})'
-    r' - - \[(?P<date>.*?)\] '
+    r"(?P<ip>(?:25[0-5]|2[0-4]\d|[01]?\d\d?)(?:\.(?:25[0-5]|2[0-4]\d|[01]?\d\d?)){3})"
+    r" - - \[(?P<date>.*?)\] "
     r'"(?P<method>\S+) (?P<endpoint>.*?) HTTP/\S+" '
-    r'(?P<status>\d{3}) '
-    r'(?P<size>\d+)'
+    r"(?P<status>\d{3}) "
+    r"(?P<size>\d+)"
 )
 
 
@@ -40,9 +40,7 @@ def _extract_and_type(lf: LazyFrame) -> LazyFrame:
 
 def _apply_quality_rules(lf: LazyFrame) -> tuple[LazyFrame, LazyFrame]:
     unmatched = lf.filter(
-        pl.col("ip").is_null()
-        | pl.col("status").is_null()
-        | pl.col("size").is_null()
+        pl.col("ip").is_null() | pl.col("status").is_null() | pl.col("size").is_null()
     ).with_columns(pl.lit("regex_mismatch").alias("rejection_reason"))
 
     matched = lf.filter(
@@ -99,7 +97,8 @@ def process_logs(
 
         logger.info(
             "Qualidade - Validos: %,d | Rejeitados: %,d | Taxa: %.2f%%",
-            valid_count, quarantine_count,
+            valid_count,
+            quarantine_count,
             (quarantine_count / total_input * 100) if total_input else 0,
         )
         for row in rejection_breakdown.iter_rows(named=True):
@@ -111,7 +110,7 @@ def process_logs(
         for subdir in output_dir.iterdir():
             if subdir.is_dir():
                 shutil.rmtree(subdir)
-        for f in quarantine_dir.glob('*.parquet'):
+        for f in quarantine_dir.glob("*.parquet"):
             f.unlink()
 
         logger.info("Gravando Parquet particionado (streaming)...")

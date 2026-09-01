@@ -19,8 +19,8 @@ st.set_page_config(
 st.title("Log Analytics Engine - Executive Dashboard")
 st.markdown("Monitoramento do Data Lake com metricas de qualidade.")
 
-lake_exists = os.path.exists('data/processed/logs_lake')
-quarantine_exists = os.path.exists('data/processed/quarantine')
+lake_exists = os.path.exists("data/processed/logs_lake")
+quarantine_exists = os.path.exists("data/processed/quarantine")
 
 if not lake_exists:
     st.error("Data Lake nao gerado. Execute python -m src.main --generate primeiro.")
@@ -28,7 +28,8 @@ if not lake_exists:
 
 con = duckdb.connect()
 
-kpis = con.execute(f"""
+kpis = con.execute(
+    f"""
     SELECT
         COUNT(*) AS total_logs,
         COALESCE(SUM(CASE WHEN is_error THEN 1 ELSE 0 END), 0) AS total_erros,
@@ -36,7 +37,8 @@ kpis = con.execute(f"""
         COUNT(DISTINCT endpoint) AS endpoints_unicos,
         COUNT(DISTINCT ip) AS ips_unicos
     FROM '{LAKE_PATH}'
-""").fetchone()
+"""
+).fetchone()
 
 total_logs, total_erros, tamanho_medio, endpoints_unicos, ips_unicos = kpis
 taxa_erro = round((total_erros / total_logs) * 100, 2) if total_logs else 0.0
@@ -44,9 +46,11 @@ taxa_erro = round((total_erros / total_logs) * 100, 2) if total_logs else 0.0
 quarantine_count = 0
 if quarantine_exists:
     with contextlib.suppress(Exception):
-        quarantine_count = con.execute(f"""
+        quarantine_count = con.execute(
+            f"""
             SELECT COUNT(*) FROM '{QUARANTINE_PATH}'
-        """).fetchone()[0]
+        """
+        ).fetchone()[0]
 
 total_input = total_logs + quarantine_count
 qualidade_score = round((total_logs / total_input) * 100, 2) if total_input else 100.0
@@ -65,18 +69,23 @@ col_left, col_right = st.columns(2)
 
 with col_left:
     st.subheader("Top 10 Endpoints")
-    df_endpoints = con.execute(f"""
+    df_endpoints = con.execute(
+        f"""
         SELECT endpoint, COUNT(*) AS requisicoes
         FROM '{LAKE_PATH}'
         GROUP BY endpoint
         ORDER BY requisicoes DESC
         LIMIT 10
-    """).df()
+    """
+    ).df()
 
     fig = px.bar(
         df_endpoints,
-        x="requisicoes", y="endpoint", orientation="h",
-        color="requisicoes", color_continuous_scale="Viridis",
+        x="requisicoes",
+        y="endpoint",
+        orientation="h",
+        color="requisicoes",
+        color_continuous_scale="Viridis",
         labels={"requisicoes": "Requisicoes", "endpoint": "Endpoint"},
     )
     fig.update_layout(yaxis={"categoryorder": "total ascending"}, height=400)
@@ -84,23 +93,28 @@ with col_left:
 
 with col_right:
     st.subheader("Distribuicao de Status HTTP")
-    df_status = con.execute(f"""
+    df_status = con.execute(
+        f"""
         SELECT CAST(status AS VARCHAR) AS status_code, COUNT(*) AS total
         FROM '{LAKE_PATH}'
         GROUP BY status
         ORDER BY total DESC
-    """).df()
+    """
+    ).df()
 
     fig = px.pie(
         df_status,
-        names="status_code", values="total", hole=0.4,
+        names="status_code",
+        values="total",
+        hole=0.4,
         color_discrete_sequence=px.colors.qualitative.Pastel,
     )
     fig.update_layout(height=400)
     st.plotly_chart(fig, use_container_width=True)
 
 st.subheader("Volume de Requisicoes ao Longo do Tempo")
-df_time = con.execute(f"""
+df_time = con.execute(
+    f"""
     SELECT
         dt_partition AS data,
         COUNT(*) AS volume,
@@ -108,11 +122,13 @@ df_time = con.execute(f"""
     FROM '{LAKE_PATH}'
     GROUP BY dt_partition
     ORDER BY dt_partition
-""").df()
+"""
+).df()
 
 fig_time = px.line(
     df_time,
-    x="data", y=["volume", "erros"],
+    x="data",
+    y=["volume", "erros"],
     labels={"value": "Quantidade", "variable": "Metrica", "data": "Data"},
     markers=True,
 )
@@ -124,7 +140,8 @@ if quarantine_exists and quarantine_count > 0:
     st.subheader("Quarentena de Qualidade")
     st.warning(f"{quarantine_count:,} registros foram rejeitados.")
 
-    df_quarantine = con.execute(f"""
+    df_quarantine = con.execute(
+        f"""
         SELECT
             rejection_reason AS motivo,
             COUNT(*) AS quantidade,
@@ -132,7 +149,8 @@ if quarantine_exists and quarantine_count > 0:
         FROM '{QUARANTINE_PATH}'
         GROUP BY rejection_reason
         ORDER BY quantidade DESC
-    """).df()
+    """
+    ).df()
 
     st.dataframe(df_quarantine, use_container_width=True, hide_index=True)
 

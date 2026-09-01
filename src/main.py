@@ -48,16 +48,19 @@ def run_pipeline(
         )
 
         elapsed = time.perf_counter() - start_time
-        metrics = result['metrics']
-        throughput = metrics['valid_count'] / elapsed if elapsed > 0 else 0
+        metrics = result["metrics"]
+        throughput = metrics["valid_count"] / elapsed if elapsed > 0 else 0
 
         logger.info("=" * 60)
         logger.info("PIPELINE CONCLUIDO")
         logger.info("   Tempo total:       %.2f s", elapsed)
         logger.info("   Linhas de entrada: %,d", metrics["total_input"])
         logger.info("   Linhas validas:    %,d", metrics["valid_count"])
-        logger.info("   Rejeitadas:        %,d (%.2f%%)",
-                    metrics['quarantine_count'], metrics['rejection_rate'] * 100)
+        logger.info(
+            "   Rejeitadas:        %,d (%.2f%%)",
+            metrics["quarantine_count"],
+            metrics["rejection_rate"] * 100,
+        )
         logger.info("   Throughput:        %,.0f linhas/s", throughput)
         logger.info("=" * 60)
 
@@ -82,7 +85,9 @@ def main() -> None:
         "--output", default="data/processed/logs_lake", help="Diretorio de saida"
     )
     parser.add_argument(
-        "--quarantine", default="data/processed/quarantine", help="Diretorio de quarentena"
+        "--quarantine",
+        default="data/processed/quarantine",
+        help="Diretorio de quarentena",
     )
     parser.add_argument(
         "--generate", action="store_true", help="Gera logs se arquivo nao existir"

@@ -12,7 +12,8 @@ def run_analytics_queries():
         return None, None
 
     with duckdb.connect() as con:
-        df_top_endpoints = con.execute(f"""
+        df_top_endpoints = con.execute(
+            f"""
             SELECT
                 endpoint,
                 COUNT(*) AS total_requisicoes,
@@ -21,9 +22,11 @@ def run_analytics_queries():
             GROUP BY endpoint
             ORDER BY total_requisicoes DESC
             LIMIT 5
-        """).df()
+        """
+        ).df()
 
-        df_error_rate = con.execute(f"""
+        df_error_rate = con.execute(
+            f"""
             SELECT
                 dt_partition,
                 COUNT(*) AS total,
@@ -32,7 +35,8 @@ def run_analytics_queries():
             FROM '{lake_path}'
             GROUP BY dt_partition
             ORDER BY dt_partition ASC
-        """).df()
+        """
+        ).df()
 
     return df_top_endpoints, df_error_rate
 
