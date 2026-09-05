@@ -81,17 +81,17 @@ def process_logs(
 
     try:
         lf_raw = pl.scan_csv(file_path, has_header=False, new_columns=["raw"])
-        total_input = lf_raw.select(pl.count()).collect().item()
+        total_input = lf_raw.select(pl.len()).collect().item()
         logger.info("Total de linhas de entrada: %,d", total_input)
 
         lf_typed = _extract_and_type(lf_raw)
         lf_valid, lf_quarantine = _apply_quality_rules(lf_typed)
 
-        valid_count = lf_valid.select(pl.count()).collect().item()
-        quarantine_count = lf_quarantine.select(pl.count()).collect().item()
+        valid_count = lf_valid.select(pl.len()).collect().item()
+        quarantine_count = lf_quarantine.select(pl.len()).collect().item()
         rejection_breakdown = (
             lf_quarantine.group_by("rejection_reason")
-            .agg(pl.count().alias("count"))
+            .agg(pl.len().alias("count"))
             .collect()
         )
 
@@ -114,7 +114,10 @@ def process_logs(
             f.unlink()
 
         logger.info("Gravando Parquet particionado (streaming)...")
-        lf_valid.sink_parquet(output_dir, partition_by=["dt_partition"])
+        lf_valid.sink_parquet(
+            pl.PartitionBy(output_dir, key="dt_partition"),
+            mkdir=True,
+        )
 
         if quarantine_count > 0:
             logger.info("Gravando quarentena...")
