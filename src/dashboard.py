@@ -40,17 +40,23 @@ kpis = con.execute(
 """
 ).fetchone()
 
+if kpis is None:
+    st.error("Nao foi possivel obter os KPIs do Data Lake.")
+    st.stop()
+
 total_logs, total_erros, tamanho_medio, endpoints_unicos, ips_unicos = kpis
 taxa_erro = round((total_erros / total_logs) * 100, 2) if total_logs else 0.0
 
 quarantine_count = 0
 if quarantine_exists:
     with contextlib.suppress(Exception):
-        quarantine_count = con.execute(
+        quarantine_row = con.execute(
             f"""
             SELECT COUNT(*) FROM '{QUARANTINE_PATH}'
         """
-        ).fetchone()[0]
+        ).fetchone()
+        if quarantine_row is not None:
+            quarantine_count = quarantine_row[0]
 
 total_input = total_logs + quarantine_count
 qualidade_score = round((total_logs / total_input) * 100, 2) if total_input else 100.0
