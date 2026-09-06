@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 
 import duckdb
 
 
-def run_analytics_queries():
+def run_analytics_queries() -> tuple[Any, Any]:
     lake_path = "data/processed/logs_lake/*/*.parquet"
 
     if not os.path.exists("data/processed/logs_lake"):
