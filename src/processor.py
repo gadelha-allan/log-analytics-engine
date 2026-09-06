@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 from polars.exceptions import ComputeError
@@ -69,7 +69,7 @@ def process_logs(
     file_path: str | Path,
     output_dir: str | Path = "data/processed/logs_lake",
     quarantine_dir: str | Path = "data/processed/quarantine",
-) -> dict[str, DataFrame]:
+) -> dict[str, Any]:
     file_path = Path(file_path)
     output_dir = Path(output_dir)
     quarantine_dir = Path(quarantine_dir)
