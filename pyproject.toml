@@ -9,7 +9,7 @@ description = "Pipeline ETL de alta performance para processamento de logs"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-authors = [{name = "Allan Gadelha", email = "allanmartinsgadelha@gmail.com"}]
+authors = []
 keywords = ["data-engineering", "etl", "polars", "parquet", "logs"]
 classifiers = [
     "Development Status :: 4 - Beta",

@@ -6,34 +6,70 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
 
-      - run: pip install -r requirements-dev.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --retries 5 --timeout 60 -r requirements-dev.txt
 
-      - run: ruff check src/ tests/
+      - name: Ruff
+        run: ruff check src/ tests/
 
-      - run: black --check src/ tests/
+      - name: Black
+        run: black --check src/ tests/
 
-      - name: Type checking
-        if: matrix.python-version == '3.12'
-        run: mypy src/
+      - name: Mypy
+        run: mypy --python-version ${{ matrix.python-version }} src/
 
-      - run: pytest --cov=src --cov-report=xml
+      - name: Tests
+        run: pytest --cov=src --cov-report=xml --cov-report=term-missing
 
-      - uses: codecov/codecov-action@v4
+      - name: Upload coverage to Codecov
+        if: ${{ always() && matrix.python-version == '3.12' && hashFiles('coverage.xml') != '' }}
+        uses: codecov/codecov-action@v5.5.5
         with:
           files: ./coverage.xml
           fail_ci_if_error: false
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+
+      - name: Build Docker images
+        run: docker compose build --pull --progress=plain
+
+      - name: Smoke test application image
+        run: docker compose run --rm -T log-engine python -m src.main --generate --lines 1000
