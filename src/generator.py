@@ -110,7 +110,7 @@ def generate_mock_logs(
     statuses = list(STATUS_DISTRIBUTION.keys())
     status_weights = list(STATUS_DISTRIBUTION.values())
 
-    logger.info("Gerando %,d linhas de log em %s", lines, filepath)
+    logger.info("Gerando %s linhas de log em %s", f"{lines:,}", filepath)
 
     with open(filepath, "w", encoding="utf-8") as f:
         for _ in range(lines):

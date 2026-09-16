@@ -9,7 +9,7 @@ import polars as pl
 from polars.exceptions import ComputeError
 
 if TYPE_CHECKING:
-    from polars import DataFrame, LazyFrame
+    from polars import LazyFrame
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ def process_logs(
     try:
         lf_raw = pl.scan_csv(file_path, has_header=False, new_columns=["raw"])
         total_input = lf_raw.select(pl.len()).collect().item()
-        logger.info("Total de linhas de entrada: %,d", total_input)
+        logger.info("Total de linhas de entrada: %s", f"{total_input:,}")
 
         lf_typed = _extract_and_type(lf_raw)
         lf_valid, lf_quarantine = _apply_quality_rules(lf_typed)
@@ -96,13 +96,15 @@ def process_logs(
         )
 
         logger.info(
-            "Qualidade - Validos: %,d | Rejeitados: %,d | Taxa: %.2f%%",
-            valid_count,
-            quarantine_count,
+            "Qualidade - Validos: %s | Rejeitados: %s | Taxa: %.2f%%",
+            f"{valid_count:,}",
+            f"{quarantine_count:,}",
             (quarantine_count / total_input * 100) if total_input else 0,
         )
         for row in rejection_breakdown.iter_rows(named=True):
-            logger.info("  -> %s: %,d registros", row["rejection_reason"], row["count"])
+            logger.info(
+                "  -> %s: %s registros", row["rejection_reason"], f'{row["count"]:,}'
+            )
 
         output_dir.mkdir(parents=True, exist_ok=True)
         quarantine_dir.mkdir(parents=True, exist_ok=True)

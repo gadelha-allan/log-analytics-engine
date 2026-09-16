@@ -54,14 +54,14 @@ def run_pipeline(
         logger.info("=" * 60)
         logger.info("PIPELINE CONCLUIDO")
         logger.info("   Tempo total:       %.2f s", elapsed)
-        logger.info("   Linhas de entrada: %,d", metrics["total_input"])
-        logger.info("   Linhas validas:    %,d", metrics["valid_count"])
+        logger.info("   Linhas de entrada: %s", f'{metrics["total_input"]:,}')
+        logger.info("   Linhas validas:    %s", f'{metrics["valid_count"]:,}')
         logger.info(
-            "   Rejeitadas:        %,d (%.2f%%)",
-            metrics["quarantine_count"],
+            "   Rejeitadas:        %s (%.2f%%)",
+            f'{metrics["quarantine_count"]:,}',
             metrics["rejection_rate"] * 100,
         )
-        logger.info("   Throughput:        %,.0f linhas/s", throughput)
+        logger.info("   Throughput:        %s linhas/s", f"{throughput:,.0f}")
         logger.info("=" * 60)
 
         return result
