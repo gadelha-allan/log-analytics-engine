@@ -1,0 +1,9 @@
+# Copy this file to profiles.yml before invoking dbt locally.
+# DBT_DUCKDB_PATH may be an absolute path or relative to the repository root.
+log_analytics_engine:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('DBT_DUCKDB_PATH', 'data/log_analytics.duckdb') }}"
+      threads: 4

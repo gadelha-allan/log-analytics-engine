@@ -221,6 +221,7 @@ __marimo__/
 # Ignorar arquivos de dados brutos e processados do pipeline
 data/raw/*.log
 data/processed/
+data/*.duckdb
 
 # --- Arquivos de Sistema Operacional ---
 .DS_Store
