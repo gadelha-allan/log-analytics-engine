@@ -4,7 +4,7 @@ services:
     container_name: log-analytics-engine
     command: python -m src.main --generate --lines 5000000
     volumes:
-      - ./data:/app/data
+      - ./data:/app/data:z
 
   dashboard:
     build: .
@@ -16,6 +16,6 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - ./data:/app/data
+      - ./data:/app/data:z
     depends_on:
       - log-engine
