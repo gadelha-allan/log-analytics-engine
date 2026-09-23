@@ -36,12 +36,16 @@ def run_analytics_queries(
     unknown = sorted(set(selected_names) - set(queries))
     if unknown:
         available = ", ".join(queries)
-        raise ValueError(f"Unknown queries: {', '.join(unknown)}. Available: {available}")
+        raise ValueError(
+            f"Unknown queries: {', '.join(unknown)}. Available: {available}"
+        )
 
     results: dict[str, Any] = {}
     with duckdb.connect() as connection:
         for name in selected_names:
-            results[name] = connection.execute(load_query(queries[name], lake_path)).df()
+            results[name] = connection.execute(
+                load_query(queries[name], lake_path)
+            ).df()
     return results
 
 
@@ -61,7 +65,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Query filename stem; repeat to run multiple queries.",
     )
     parser.add_argument(
-        "--list", action="store_true", help="List available queries without running them."
+        "--list",
+        action="store_true",
+        help="List available queries without running them.",
     )
     return parser
 
