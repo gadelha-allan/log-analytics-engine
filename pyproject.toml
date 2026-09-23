@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "log-analytics-engine"
-version = "1.0.0"
-description = "Pipeline ETL de alta performance para processamento de logs"
+version = "1.1.0"
+description = "High-performance ETL and analytical SQL engine for server logs"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
