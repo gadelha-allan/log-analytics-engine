@@ -1,0 +1,134 @@
+version: 2
+
+models:
+  - name: fact_requests
+    description: >
+      Gold fact table at one row per validated HTTP request. It preserves request-level
+      measures and links to the date and endpoint dimensions.
+    columns:
+      - name: request_key
+        description: Warehouse-generated unique identifier for the request row.
+        data_tests:
+          - not_null
+          - unique
+      - name: endpoint_key
+        description: Surrogate key for the requested endpoint.
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_endpoint')
+              field: endpoint_key
+      - name: client_ip
+        description: IPv4 address of the requesting client.
+        data_tests:
+          - not_null
+      - name: raw_request_timestamp
+        description: Original request timestamp retained for lineage.
+        data_tests:
+          - not_null
+      - name: http_method
+        description: HTTP method from the request.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD']
+      - name: http_status_code
+        description: Valid HTTP response status code.
+        data_tests:
+          - not_null
+      - name: response_size_bytes
+        description: Non-negative response payload size in bytes.
+        data_tests:
+          - not_null
+      - name: request_date
+        description: Calendar date of the request.
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_day
+      - name: is_error
+        description: True for HTTP status codes 400 and above.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+
+  - name: dim_date
+    description: Calendar dimension covering every request date in the fact table.
+    columns:
+      - name: date_day
+        description: Unique calendar date key.
+        data_tests:
+          - not_null
+          - unique
+      - name: is_weekend
+        description: Whether the date falls on Saturday or Sunday.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+
+  - name: dim_endpoint
+    description: Unique dimension of observed HTTP endpoints and their route metadata.
+    columns:
+      - name: endpoint_key
+        description: Deterministic MD5 surrogate key of the endpoint string.
+        data_tests:
+          - not_null
+          - unique
+      - name: endpoint
+        description: Original requested endpoint including the query string.
+        data_tests:
+          - not_null
+          - unique
+      - name: has_query_string
+        description: Whether the endpoint includes a query string.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+
+  - name: mart_daily_traffic
+    description: One row per request date with daily volume, error, size, and cardinality metrics.
+    columns:
+      - name: request_date
+        description: Unique request date for the aggregate.
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              to: ref('dim_date')
+              field: date_day
+      - name: total_requests
+        description: Total validated requests received on the date.
+        data_tests:
+          - not_null
+      - name: error_rate_pct
+        description: Percentage of daily requests that were HTTP errors.
+        data_tests:
+          - not_null
+
+  - name: mart_endpoint_health
+    description: One row per endpoint with volume, reliability, size, and client metrics.
+    columns:
+      - name: endpoint_key
+        description: Endpoint dimension surrogate key.
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              to: ref('dim_endpoint')
+              field: endpoint_key
+      - name: endpoint
+        description: Endpoint represented by this health record.
+        data_tests:
+          - not_null
+      - name: total_requests
+        description: Total validated requests for the endpoint.
+        data_tests:
+          - not_null
+      - name: error_rate_pct
+        description: Percentage of endpoint requests that were HTTP errors.
+        data_tests:
+          - not_null

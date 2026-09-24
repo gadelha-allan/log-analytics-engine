@@ -23,19 +23,21 @@ flowchart LR
     D -->|valid| E[(Date-partitioned Parquet)]
     D -->|invalid| F[(Quarantine Parquet)]
     E --> G[DuckDB analytical SQL]
-    E --> H[Streamlit dashboard]
+    E --> H[dbt staging and Gold marts]
+    H --> I[Streamlit dashboard]
 ```
 
 1. **Extract** — `generator.py` can create Common Log Format data. `processor.py` lazily scans input and extracts `ip`, `date`, `method`, `endpoint`, `status`, and `size`.
 2. **Transform and validate** — typed records gain `dt_partition` and `is_error`. Invalid rows receive a `rejection_reason`.
 3. **Load** — valid records are streamed to Hive-style Parquet partitions; rejected records are stored separately.
-4. **Analyze** — DuckDB reads Parquet directly and runs versioned queries from [`sql/`](sql/README.md).
+4. **Model and analyze** — dbt models the Silver lake into a documented Gold star schema for the dashboard, while DuckDB runs versioned queries from [`sql/`](sql/README.md).
 
 ## Project layout
 
 ```text
 log-analytics-engine/
 ├── src/                  # Pipeline, generator, query runner, and dashboard
+├── dbt/                  # dbt staging, Gold dimensions, facts, and marts
 ├── sql/                  # Versioned DuckDB analytical queries
 ├── docs/                 # Performance and execution-plan notes
 ├── tests/                # Unit, integration, and SQL tests
@@ -53,6 +55,7 @@ log-analytics-engine/
 | Polars | Lazy, vectorized parsing and transformation |
 | Apache Parquet / PyArrow | Compressed columnar storage and partitioning |
 | DuckDB | In-process analytical SQL over Parquet |
+| dbt + dbt-duckdb | Medallion modeling, star schema, data tests, and documentation |
 | Streamlit / Plotly | Interactive dashboard |
 | pytest, Ruff, Black, MyPy | Tests and code quality |
 | Docker / Compose | Reproducible runtime |
@@ -118,13 +121,25 @@ python -m src.query_lake --lake-path '/tmp/logs_lake/**/*.parquet'
 
 Queries use `read_parquet(..., hive_partitioning = true)`, allowing filters on `dt_partition` to prune partitions. See [`docs/sql-performance.md`](docs/sql-performance.md) for reproducible `EXPLAIN` and `EXPLAIN ANALYZE` workflows.
 
+## Gold dimensional layer
+
+The dbt project treats the Polars lake as Silver and materializes `gold.fact_requests`, `gold.dim_date`, `gold.dim_endpoint`, `gold.mart_daily_traffic`, and `gold.mart_endpoint_health` in DuckDB.
+
+```bash
+cp dbt/profiles.yml.example dbt/profiles.yml
+dbt build --project-dir dbt --profiles-dir dbt
+dbt docs generate --project-dir dbt --profiles-dir dbt
+```
+
+See [`docs/gold-star-schema.md`](docs/gold-star-schema.md) for grains, relationships, and the dimensional diagram.
+
 ## Dashboard
 
 ```bash
 streamlit run src/dashboard.py
 ```
 
-The dashboard shows global KPIs, top endpoints, HTTP status distribution, daily request/error volume, and quarantine statistics.
+After `dbt build`, the dashboard reads Gold marts for KPIs, endpoint health, and daily traffic; before that it safely reads the Silver Parquet lake. It also shows HTTP status distribution and quarantine statistics.
 
 ## Tests and quality checks
 
