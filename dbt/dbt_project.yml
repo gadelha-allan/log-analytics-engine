@@ -16,3 +16,6 @@ models:
     staging:
       +schema: analytics
       +materialized: view
+    gold:
+      +schema: gold
+      +materialized: table

@@ -8,7 +8,7 @@ flowchart LR
     B[Silver\nPolars parsing + quality gate\ndata/processed/logs_lake]
     C[dbt source: silver.logs\nExternal DuckDB read_parquet]
     D[dbt staging\nanalytics.stg_logs]
-    E[Gold\nFuture business metrics\nand marts]
+    E[Gold\nStar schema and\nanalytical marts]
 
     A --> B
     B --> C
@@ -21,7 +21,7 @@ flowchart LR
 | Bronze | Log producer | `data/raw/server.log` | Immutable, unstructured Common Log Format input. |
 | Silver | Polars pipeline | `data/processed/logs_lake/dt_partition=*/` | Regex parsing, type conversion, validation, rejection quarantine, and partitioned Parquet output. |
 | dbt staging | dbt + DuckDB | `analytics.stg_logs` view | Stable, typed analytical names and documentation over Silver. |
-| Gold | dbt + DuckDB | Future marts | Business-level aggregates, KPIs, and semantic models. |
+| Gold | dbt + DuckDB | `gold.fact_requests`, dimensions, and marts | Dimensional facts, conformed dimensions, aggregates, KPIs, and dashboard-ready models. |
 
 ## Setup
 
@@ -47,7 +47,7 @@ dbt debug --project-dir dbt --profiles-dir dbt
 dbt run --project-dir dbt --profiles-dir dbt
 ```
 
-`dbt run` creates the `analytics.stg_logs` view. Verify it in DuckDB:
+`dbt run` creates the `analytics.stg_logs` view. `dbt build` also materializes the Gold star schema and runs its tests. Verify the staging view in DuckDB:
 
 ```sql
 select * from analytics.stg_logs limit 10;
