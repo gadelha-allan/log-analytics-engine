@@ -1,0 +1,32 @@
+version: 2
+
+sources:
+  - name: silver
+    description: >
+      Clean, validated access-log records written as partitioned Parquet by the
+      Polars pipeline. The pipeline is the quality gate for this source.
+    schema: main
+    tables:
+      - name: logs
+        description: >
+          The current Silver log lake. Each Hive-style dt_partition directory
+          contains a Parquet file with validated HTTP access-log records.
+        meta:
+          external_location: "read_parquet('{{ env_var('LOG_ANALYTICS_SILVER_PATH', 'data/processed/logs_lake/**/*.parquet') }}', hive_partitioning = true)"
+        columns:
+          - name: ip
+            description: IPv4 address of the client that made the request.
+          - name: date
+            description: Original timestamp extracted from the Common Log Format line.
+          - name: method
+            description: HTTP method used by the request.
+          - name: endpoint
+            description: Requested route, including any query string recorded in the log.
+          - name: status
+            description: Valid HTTP response status code from 100 through 599.
+          - name: size
+            description: Non-negative response body size in bytes.
+          - name: dt_partition
+            description: Request date used as the Hive-style Parquet partition key.
+          - name: is_error
+            description: True when the HTTP status code is 400 or greater.

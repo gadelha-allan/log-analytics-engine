@@ -1,0 +1,24 @@
+version: 2
+
+models:
+  - name: stg_logs
+    description: >
+      Typed, documented dbt staging view over the validated Silver log lake.
+      It is the stable interface for future Gold analytical models.
+    columns:
+      - name: client_ip
+        description: Client IPv4 address from the validated Silver record.
+      - name: raw_request_timestamp
+        description: Original timestamp string retained for traceability.
+      - name: http_method
+        description: HTTP method submitted by the client.
+      - name: endpoint
+        description: Requested endpoint.
+      - name: http_status_code
+        description: Valid HTTP status code.
+      - name: response_size_bytes
+        description: Response size in bytes.
+      - name: request_date
+        description: Request date derived by the Polars pipeline.
+      - name: is_error
+        description: Whether the response is an HTTP error.

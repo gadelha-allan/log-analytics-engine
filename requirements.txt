@@ -4,3 +4,5 @@ duckdb==1.1.1
 streamlit==1.39.0
 plotly==5.24.1
 faker==30.8.1
+dbt-core==1.8.9
+dbt-duckdb==1.8.4
