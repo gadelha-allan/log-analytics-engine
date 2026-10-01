@@ -4,7 +4,7 @@ from pathlib import Path
 
 import polars as pl
 
-from processor import process_logs
+from src.processor import process_logs
 
 
 def test_extracao_regex_campos_corretos(
