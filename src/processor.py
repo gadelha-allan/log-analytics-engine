@@ -14,11 +14,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 LOG_PATTERN = (
-    r"(?P<ip>(?:25[0-5]|2[0-4]\d|[01]?\d\d?)(?:\.(?:25[0-5]|2[0-4]\d|[01]?\d\d?)){3})"
+    r"^(?P<ip>(?:25[0-5]|2[0-4]\d|[01]?\d\d?)(?:\.(?:25[0-5]|2[0-4]\d|[01]?\d\d?)){3})"
     r" - - \[(?P<date>.*?)\] "
     r'"(?P<method>\S+) (?P<endpoint>.*?) HTTP/\S+" '
     r"(?P<status>\d{3}) "
-    r"(?P<size>\d+)"
+    r"(?P<size>-?\d+)$"
 )
 
 
@@ -28,7 +28,7 @@ def _extract_and_type(lf: LazyFrame) -> LazyFrame:
         .unnest("parsed")
         .with_columns(
             pl.col("status").cast(pl.Int32, strict=False),
-            pl.col("size").cast(pl.Int32, strict=False),
+            pl.col("size").cast(pl.Int64, strict=False),
             pl.col("date")
             .str.strptime(pl.Datetime, "%d/%b/%Y:%H:%M:%S %z", strict=False)
             .dt.date()
@@ -59,8 +59,16 @@ def _apply_quality_rules(lf: LazyFrame) -> tuple[LazyFrame, LazyFrame]:
         pl.lit("negative_size").alias("rejection_reason")
     )
 
-    valid = valid_status.filter(pl.col("size") >= 0)
-    quarantine = pl.concat([unmatched, invalid_status, invalid_size], how="diagonal")
+    valid_size = valid_status.filter(pl.col("size") >= 0)
+
+    invalid_date = valid_size.filter(pl.col("dt_partition").is_null()).with_columns(
+        pl.lit("invalid_date").alias("rejection_reason")
+    )
+
+    valid = valid_size.filter(pl.col("dt_partition").is_not_null())
+    quarantine = pl.concat(
+        [unmatched, invalid_status, invalid_size, invalid_date], how="diagonal"
+    )
 
     return valid, quarantine
 
