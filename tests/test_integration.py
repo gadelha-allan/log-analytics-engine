@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from generator import generate_mock_logs
-from main import run_pipeline
+from src.generator import generate_mock_logs
+from src.main import run_pipeline
 
 
 def test_pipeline_end_to_end(tmp_path: Path) -> None:

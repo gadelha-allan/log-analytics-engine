@@ -6,8 +6,8 @@ import sys
 import time
 from pathlib import Path
 
-from generator import generate_mock_logs
-from processor import process_logs
+from .generator import generate_mock_logs
+from .processor import process_logs
 
 logging.basicConfig(
     level=logging.INFO,

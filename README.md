@@ -27,7 +27,7 @@ flowchart LR
     H --> I[Streamlit dashboard]
 ```
 
-1. **Extract** — `generator.py` can create Common Log Format data. `processor.py` lazily scans input and extracts `ip`, `date`, `method`, `endpoint`, `status`, and `size`.
+1. **Extract** — `generator.py` can create Common Log Format data. `processor.py` lazily scans input, preserves each original line in `raw`, and extracts `ip`, `date`, `method`, `endpoint`, `status`, and `size`.
 2. **Transform and validate** — typed records gain `dt_partition` and `is_error`. Invalid rows receive a `rejection_reason`.
 3. **Load** — valid records are streamed to Hive-style Parquet partitions; rejected records are stored separately.
 4. **Model and analyze** — dbt models the Silver lake into a documented Gold star schema for the dashboard, while DuckDB runs versioned queries from [`sql/`](sql/README.md).
@@ -91,16 +91,17 @@ python -m src.main [OPTIONS]
 
 | Column | Type | Description |
 |---|---|---|
+| `raw` | String | Original log line, excluding the line terminator |
 | `ip` | String | Client IPv4 address |
 | `date` | String | Original log timestamp |
 | `method` | String | HTTP method |
 | `endpoint` | String | Requested route |
 | `status` | Int32 | HTTP status in the 100–599 range |
-| `size` | Int32 | Response size in bytes |
+| `size` | Int64 | Response size in bytes |
 | `dt_partition` | Date | Date-derived Parquet partition key |
 | `is_error` | Boolean | `true` when `status >= 400` |
 
-Quality failures are stored in `data/processed/quarantine/quarantine.parquet` as `regex_mismatch`, `invalid_status`, or `negative_size`.
+Quality failures are stored in `data/processed/quarantine/quarantine.parquet` with the original line in `raw`, the extracted fields (which may be null), and a `rejection_reason`: `regex_mismatch`, `invalid_status`, `negative_size`, or `invalid_date`. The original line is preserved without its line terminator, including spaces, commas, and quotes, even when parsing fails. Each input line appears exactly once in either the valid output or quarantine, so `total_input = valid_count + quarantine_count`. Tests read the quarantine Parquet and verify the original lines and their rejection reasons.
 
 ## Advanced SQL analytics
 

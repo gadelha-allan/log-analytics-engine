@@ -5,9 +5,9 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from generator import generate_mock_logs
-from processor import process_logs
-from query_lake import discover_queries, load_query, run_analytics_queries
+from src.generator import generate_mock_logs
+from src.processor import process_logs
+from src.query_lake import discover_queries, load_query, run_analytics_queries
 
 
 @pytest.fixture

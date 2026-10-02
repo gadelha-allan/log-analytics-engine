@@ -57,14 +57,15 @@ flowchart LR
     D -->|inválido| F[(quarantine.parquet)]
 ```
 
-1. **Extract** — `generator.py` cria um log sintético caso `data/raw/server.log` ainda não exista. `processor.py` faz a leitura *lazy* (`pl.scan_csv`) e extrai os campos `ip`, `date`, `method`, `endpoint`, `status` e `size` com uma única expressão regular (`str.extract_groups`).
+1. **Extract** — `generator.py` cria um log sintético caso `data/raw/server.log` ainda não exista. `processor.py` faz a leitura *lazy* (`pl.scan_csv`), preserva a linha original em `raw` e extrai os campos `ip`, `date`, `method`, `endpoint`, `status` e `size` com uma única expressão regular (`str.extract_groups`).
 
-2. **Transform & Data Quality** — `status` e `size` são convertidos para `Int32`; `date` é parseado como `Datetime` e reduzido a `dt_partition` (`Date`); a flag booleana `is_error` marca requisições com `status >= 400`. Um filtro de **Qualidade de Dados** em três camadas é então aplicado:
+2. **Transform & Data Quality** — `status` é convertido para `Int32` e `size` para `Int64`; `date` é parseado como `Datetime` e reduzido a `dt_partition` (`Date`); a flag booleana `is_error` marca requisições com `status >= 400`. Um filtro de **Qualidade de Dados** em quatro camadas é então aplicado:
    - `regex_mismatch` — linha não casou com o padrão (IP, status ou size nulos).
    - `invalid_status` — status HTTP fora do intervalo 100–599.
    - `negative_size` — tamanho de resposta negativo.
+   - `invalid_date` — data que não pode ser convertida.
 
-3. **Load** — `main.py` apaga a saída anterior e grava o `LazyFrame` válido como Parquet particionado por `dt_partition` via `sink_parquet` (streaming). Linhas rejeitadas são gravadas em `data/processed/quarantine/quarantine.parquet` com a coluna `rejection_reason`.
+3. **Load** — `main.py` apaga a saída anterior e grava o `LazyFrame` válido como Parquet particionado por `dt_partition` via `sink_parquet` (streaming). Linhas rejeitadas são gravadas em `data/processed/quarantine/quarantine.parquet` com a linha original em `raw` e o motivo em `rejection_reason`.
 
 Todo o pipeline roda em modo *lazy* até o passo de escrita, permitindo que o Polars otimize o plano de execução antes de processar os dados de fato.
 
@@ -225,10 +226,11 @@ pytest --cov=src --cov-report=term-missing
 
 **Testes unitários (`test_processor.py`):**
 - Extração dos campos `ip`, `method`, `endpoint`, `status` e `size` via regex.
-- Tipagem das colunas (`Int32`, `Date`, `Boolean`).
+- Tipagem das colunas (`String`, `Int32`, `Int64`, `Date`, `Boolean`).
 - Regra `is_error` (`True` quando `status >= 400`).
-- Descarte e classificação de linhas inválidas na quarentena (`regex_mismatch`, `invalid_status`).
-- Coluna `rejection_reason` presente nos registros rejeitados.
+- Descarte e classificação de linhas inválidas na quarentena (`regex_mismatch`, `invalid_status`, `negative_size`, `invalid_date`).
+- Leitura do Parquet de quarentena para conferir a linha original em `raw` e seu `rejection_reason`, incluindo espaços, vírgulas, aspas e duplicatas.
+- Conservação dos registros: `total_input = valid_count + quarantine_count`.
 - Idempotência do pipeline (execuções consecutivas produzem o mesmo resultado).
 
 **Teste de integração (`test_integration.py`):**
@@ -254,12 +256,13 @@ A cada execução a saída anterior é apagada e regravada — o pipeline é **i
 
 | Coluna | Tipo | Descrição |
 |---|---|---|
+| `raw` | String | Linha original do log, sem o terminador de linha |
 | `ip` | String | Endereço IPv4 de origem da requisição |
 | `date` | String | Timestamp original extraído do log |
 | `method` | String | Método HTTP (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`) |
 | `endpoint` | String | Rota acessada (ex.: `/login`, `/api/v1/products/42`) |
 | `status` | Int32 | Código de status HTTP (intervalo válido: 100–599) |
-| `size` | Int32 | Tamanho da resposta em bytes (≥ 0) |
+| `size` | Int64 | Tamanho da resposta em bytes (≥ 0) |
 | `dt_partition` | Date | Data derivada de `date`; chave de particionamento do Parquet |
 | `is_error` | Boolean | `true` quando `status >= 400` |
 
@@ -275,13 +278,14 @@ Exemplo de linhas de log bruto (formato gerado por `generator.py`):
 
 ## Quarentena de Qualidade
 
-Registros que não passam nas regras de qualidade são isolados em `data/processed/quarantine/quarantine.parquet` com uma coluna adicional `rejection_reason`:
+Registros que não passam nas regras de qualidade são isolados em `data/processed/quarantine/quarantine.parquet` com a linha original em `raw`, os campos extraídos (que podem ser nulos) e o motivo em `rejection_reason`. A linha é preservada sem o terminador de linha, incluindo espaços, vírgulas e aspas, mesmo quando a extração falha. Cada linha de entrada aparece uma única vez na saída válida ou na quarentena: `total_input = valid_count + quarantine_count`.
 
 | Motivo | Condição |
 |---|---|
 | `regex_mismatch` | Linha não casou com o padrão do log (IP, status ou size nulos) |
 | `invalid_status` | Status HTTP fora do intervalo 100–599 |
 | `negative_size` | Tamanho de resposta negativo |
+| `invalid_date` | Data que não pode ser convertida |
 
 O dashboard exibe automaticamente a tabela de quarentena com contagem e percentual por motivo quando o arquivo existir.
 
