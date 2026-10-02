@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from datetime import date
 from pathlib import Path
 
@@ -23,6 +24,7 @@ def test_extracao_regex_campos_corretos(
     assert row["method"] == "GET"
     assert row["date"] == "27/Jul/2026:14:32:10 +0000"
     assert row["dt_partition"] == date(2026, 7, 27)
+    assert row["raw"] == mock_log_file.read_text().splitlines()[0]
 
 
 def test_descarte_linhas_invalidas(
@@ -33,6 +35,9 @@ def test_descarte_linhas_invalidas(
     assert result["metrics"]["total_input"] == 5
     assert result["metrics"]["valid_count"] == 2
     assert result["metrics"]["quarantine_count"] == 3
+    assert result["metrics"]["total_input"] == (
+        result["metrics"]["valid_count"] + result["metrics"]["quarantine_count"]
+    )
 
 
 def test_quarantine_tem_rejection_reason(
@@ -72,6 +77,7 @@ def test_tipagem_colunas(mock_log_file: Path, temp_output_dirs: tuple) -> None:
     assert df.schema["size"] == pl.Int64
     assert df.schema["dt_partition"] == pl.Date
     assert df.schema["is_error"] == pl.Boolean
+    assert df.schema["raw"] == pl.String
 
 
 def test_pipeline_idempotente(mock_log_file: Path, temp_output_dirs: tuple) -> None:
@@ -191,3 +197,63 @@ def test_ip_invalido_nao_aceita_trecho_da_regex(
     assert rejected["size"] is None
     assert rejected["status"] is None
     assert rejected["rejection_reason"] == "regex_mismatch"
+
+
+@pytest.mark.parametrize("scenario", ["validos", "rejeitados", "mistos"])
+def test_quarentena_preserva_raw_e_conserva_registros(
+    scenario: str, tmp_path: Path, temp_output_dirs: tuple[Path, Path]
+) -> None:
+    valid_line = (
+        "192.168.0.1 - - [27/Jul/2026:14:32:10 +0000] "
+        '"GET /search?q=a,b HTTP/1.1" 200 3421'
+    )
+    rejected_records = [
+        ('  texto, com "aspas", acentuação e espaços  ', "regex_mismatch"),
+        ('"linha inteira entre aspas"', "regex_mismatch"),
+        ("12345", "regex_mismatch"),
+        ("", "regex_mismatch"),
+        (valid_line.replace("192.168.0.1", "256.168.0.1"), "regex_mismatch"),
+        (valid_line.replace("200 3421", "900 3421"), "invalid_status"),
+        (valid_line.replace("200 3421", "200 -1"), "negative_size"),
+        (valid_line.replace("27/Jul/2026", "31/Feb/2026"), "invalid_date"),
+        (valid_line.replace("200 3421", "900 -1"), "invalid_status"),
+    ]
+    # Repeated lines must remain separate records in the output.
+    rejected_records.append(rejected_records[0])
+    expected_valid = [valid_line, valid_line] if scenario != "rejeitados" else []
+    expected_rejected = rejected_records if scenario != "validos" else []
+    input_lines = expected_valid + [raw for raw, _ in expected_rejected]
+    log_file = tmp_path / "evidence.log"
+    log_file.write_text("\n".join(input_lines) + "\n", encoding="utf-8")
+    output, quarantine = temp_output_dirs
+
+    result = process_logs(log_file, output, quarantine)
+    metrics = result["metrics"]
+    assert metrics["total_input"] == len(input_lines)
+    assert metrics["valid_count"] == len(expected_valid) == result["valid"].height
+    assert metrics["quarantine_count"] == len(expected_rejected)
+    assert (
+        metrics["total_input"] == metrics["valid_count"] + metrics["quarantine_count"]
+    )
+    assert Counter(result["valid"]["raw"].to_list()) == Counter(expected_valid)
+    assert {
+        row["rejection_reason"]: row["count"] for row in metrics["rejection_breakdown"]
+    } == (dict(Counter(reason for _, reason in expected_rejected)))
+
+    if expected_rejected:
+        persisted = pl.read_parquet(quarantine / "quarantine.parquet")
+        assert persisted.schema["raw"] == pl.String
+        assert persisted.height == result["quarantine"].height == len(expected_rejected)
+        assert Counter(persisted.select("raw", "rejection_reason").rows()) == Counter(
+            expected_rejected
+        )
+        assert Counter(input_lines) == Counter(
+            result["valid"]["raw"].to_list()
+        ) + Counter(persisted["raw"].to_list())
+    else:
+        assert result["quarantine"] is None
+        assert not (quarantine / "quarantine.parquet").exists()
+
+    if expected_valid:
+        persisted_valid = pl.read_parquet(list(output.rglob("*.parquet")))
+        assert Counter(persisted_valid["raw"].to_list()) == Counter(expected_valid)

@@ -24,7 +24,7 @@ LOG_PATTERN = (
 
 def _extract_and_type(lf: LazyFrame) -> LazyFrame:
     return (
-        lf.select(pl.col("raw").str.extract_groups(LOG_PATTERN).alias("parsed"))
+        lf.select("raw", pl.col("raw").str.extract_groups(LOG_PATTERN).alias("parsed"))
         .unnest("parsed")
         .with_columns(
             pl.col("status").cast(pl.Int32, strict=False),
@@ -88,7 +88,15 @@ def process_logs(
     logger.info("Iniciando pipeline: %s", file_path)
 
     try:
-        lf_raw = pl.scan_csv(file_path, has_header=False, new_columns=["raw"])
+        # Treat log lines as text, preserving commas, quotes, and empty lines.
+        lf_raw = pl.scan_csv(
+            file_path,
+            has_header=False,
+            new_columns=["raw"],
+            separator="\n",
+            quote_char=None,
+            infer_schema=False,
+        ).with_columns(pl.col("raw").fill_null(""))
         total_input = lf_raw.select(pl.len()).collect().item()
         logger.info("Total de linhas de entrada: %s", f"{total_input:,}")
 
