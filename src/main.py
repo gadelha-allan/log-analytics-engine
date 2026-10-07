@@ -31,7 +31,7 @@ def run_pipeline(
 
     if not raw_path.exists():
         if generate_if_missing:
-            logger.warning("Arquivo nao encontrado. Gerando dados sinteticos...")
+            logger.warning("Arquivo %s nao existe; gerando %s linhas", raw_path, lines)
             generate_mock_logs(raw_path, lines=lines)
         else:
             logger.error("Arquivo nao encontrado: %s", raw_path)
@@ -41,8 +41,8 @@ def run_pipeline(
     start_time = time.perf_counter()
 
     try:
-        logger.info("Iniciando pipeline ETL")
-        result = process_logs(
+        logger.info("Processando %s", raw_path)
+        processed_logs = process_logs(
             file_path=raw_path,
             output_dir=processed_dir,
             quarantine_dir=quarantine_dir,
@@ -50,23 +50,21 @@ def run_pipeline(
         )
 
         elapsed = time.perf_counter() - start_time
-        metrics = result["metrics"]
+        metrics = processed_logs["metrics"]
         throughput = metrics["valid_count"] / elapsed if elapsed > 0 else 0
 
-        logger.info("=" * 60)
-        logger.info("PIPELINE CONCLUIDO")
-        logger.info("   Tempo total:       %.2f s", elapsed)
-        logger.info("   Linhas de entrada: %s", f'{metrics["total_input"]:,}')
-        logger.info("   Linhas validas:    %s", f'{metrics["valid_count"]:,}')
+        logger.info("Pipeline concluido: %s", raw_path)
+        logger.info("Tempo total: %.2f s", elapsed)
+        logger.info("Linhas de entrada: %s", f'{metrics["total_input"]:,}')
+        logger.info("Linhas validas: %s", f'{metrics["valid_count"]:,}')
         logger.info(
-            "   Rejeitadas:        %s (%.2f%%)",
+            "Rejeitadas: %s (%.2f%%)",
             f'{metrics["quarantine_count"]:,}',
             metrics["rejection_rate"] * 100,
         )
-        logger.info("   Throughput:        %s linhas/s", f"{throughput:,.0f}")
-        logger.info("=" * 60)
+        logger.info("Linhas por segundo: %s", f"{throughput:,.0f}")
 
-        return result
+        return processed_logs
 
     except FullRefreshRequiredError as exc:
         logger.error("%s", exc)
@@ -75,7 +73,7 @@ def run_pipeline(
         logger.error("Arquivo nao encontrado: %s", raw_path)
         raise
     except Exception:
-        logger.exception("Pipeline falhou")
+        logger.exception("Falha no pipeline para %s", raw_path)
         raise
 
 

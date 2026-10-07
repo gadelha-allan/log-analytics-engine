@@ -1,4 +1,3 @@
--- Endpoint traffic share within each HTTP method.
 WITH method_endpoint AS (
     SELECT method, endpoint, COUNT(*) AS requests
     FROM read_parquet('{{lake_path}}', hive_partitioning = true)

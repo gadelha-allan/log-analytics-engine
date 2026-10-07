@@ -106,7 +106,7 @@ def process_logs(
     logger.info("Iniciando pipeline: %s", file_path)
 
     try:
-        # Treat log lines as text, preserving commas, quotes, and empty lines.
+        # CSV defaults would strip quotes or split log lines containing commas.
         lf_raw = pl.scan_csv(
             file_path,
             has_header=False,
@@ -172,8 +172,8 @@ def process_logs(
         }
 
     except ComputeError as e:
-        logger.error("Erro de computacao no Polars: %s", e)
+        logger.error("Polars nao conseguiu processar %s: %s", file_path, e)
         raise
     except Exception:
-        logger.exception("Falha inesperada no processamento")
+        logger.exception("Falha ao processar %s", file_path)
         raise

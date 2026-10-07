@@ -1,4 +1,3 @@
--- The five busiest endpoints for each day.
 WITH daily_endpoint AS (
     SELECT
         dt_partition AS request_date,

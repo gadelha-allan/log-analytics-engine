@@ -17,14 +17,16 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.title("Log Analytics Engine - Executive Dashboard")
-st.markdown("Monitoramento do Data Lake com metricas de qualidade.")
+st.title("Log Analytics Engine")
+st.markdown("Requisicoes, erros HTTP e registros rejeitados.")
 
 lake_exists = os.path.exists("data/processed/logs_lake")
 quarantine_exists = os.path.exists("data/processed/quarantine")
 
 if not lake_exists:
-    st.error("Data Lake nao gerado. Execute python -m src.main --generate primeiro.")
+    st.error(
+        "data/processed/logs_lake nao existe. Execute python -m src.main --generate."
+    )
     st.stop()
 
 con = duckdb.connect()
@@ -32,17 +34,12 @@ gold_available = False
 if os.path.exists(GOLD_DATABASE_PATH):
     with contextlib.suppress(duckdb.Error):
         gold_connection = duckdb.connect(GOLD_DATABASE_PATH, read_only=True)
-        gold_available = (
-            gold_connection.execute(
-                """
+        gold_available = gold_connection.execute("""
                 SELECT 1
                 FROM information_schema.tables
                 WHERE table_schema = 'gold'
                   AND table_name = 'mart_daily_traffic'
-                """
-            ).fetchone()
-            is not None
-        )
+                """).fetchone() is not None
         if gold_available:
             con.close()
             con = gold_connection
@@ -50,8 +47,7 @@ if os.path.exists(GOLD_DATABASE_PATH):
             gold_connection.close()
 
 if gold_available:
-    kpis = con.execute(
-        """
+    kpis = con.execute("""
         SELECT
             COALESCE(SUM(total_requests), 0) AS total_logs,
             COALESCE(SUM(total_errors), 0) AS total_erros,
@@ -66,11 +62,9 @@ if gold_available:
             (SELECT COUNT(*) FROM gold.dim_endpoint) AS endpoints_unicos,
             (SELECT COUNT(DISTINCT client_ip) FROM gold.fact_requests) AS ips_unicos
         FROM gold.mart_daily_traffic
-        """
-    ).fetchone()
+        """).fetchone()
 else:
-    kpis = con.execute(
-        f"""
+    kpis = con.execute(f"""
         SELECT
             COUNT(*) AS total_logs,
             COALESCE(SUM(CASE WHEN is_error THEN 1 ELSE 0 END), 0) AS total_erros,
@@ -78,11 +72,10 @@ else:
             COUNT(DISTINCT endpoint) AS endpoints_unicos,
             COUNT(DISTINCT ip) AS ips_unicos
         FROM '{LAKE_PATH}'
-        """
-    ).fetchone()
+        """).fetchone()
 
 if kpis is None:
-    st.error("Nao foi possivel obter os KPIs do Data Lake.")
+    st.error("A consulta de volume, erros e tamanho medio nao retornou uma linha.")
     st.stop()
 
 total_logs, total_erros, tamanho_medio, endpoints_unicos, ips_unicos = kpis
@@ -91,11 +84,9 @@ taxa_erro = round((total_erros / total_logs) * 100, 2) if total_logs else 0.0
 quarantine_count = 0
 if quarantine_exists:
     with contextlib.suppress(Exception):
-        quarantine_row = con.execute(
-            f"""
+        quarantine_row = con.execute(f"""
             SELECT COUNT(*) FROM '{QUARANTINE_PATH}'
-        """
-        ).fetchone()
+        """).fetchone()
         if quarantine_row is not None:
             quarantine_count = quarantine_row[0]
 
@@ -117,24 +108,20 @@ col_left, col_right = st.columns(2)
 with col_left:
     st.subheader("Top 10 Endpoints")
     if gold_available:
-        df_endpoints = con.execute(
-            """
+        df_endpoints = con.execute("""
             SELECT endpoint, total_requests AS requisicoes
             FROM gold.mart_endpoint_health
             ORDER BY requisicoes DESC
             LIMIT 10
-            """
-        ).df()
+            """).df()
     else:
-        df_endpoints = con.execute(
-            f"""
+        df_endpoints = con.execute(f"""
             SELECT endpoint, COUNT(*) AS requisicoes
             FROM '{LAKE_PATH}'
             GROUP BY endpoint
             ORDER BY requisicoes DESC
             LIMIT 10
-            """
-        ).df()
+            """).df()
 
     fig = px.bar(
         df_endpoints,
@@ -151,23 +138,19 @@ with col_left:
 with col_right:
     st.subheader("Distribuicao de Status HTTP")
     if gold_available:
-        df_status = con.execute(
-            """
+        df_status = con.execute("""
             SELECT CAST(http_status_code AS VARCHAR) AS status_code, COUNT(*) AS total
             FROM gold.fact_requests
             GROUP BY http_status_code
             ORDER BY total DESC
-            """
-        ).df()
+            """).df()
     else:
-        df_status = con.execute(
-            f"""
+        df_status = con.execute(f"""
             SELECT CAST(status AS VARCHAR) AS status_code, COUNT(*) AS total
             FROM '{LAKE_PATH}'
             GROUP BY status
             ORDER BY total DESC
-            """
-        ).df()
+            """).df()
 
     fig = px.pie(
         df_status,
@@ -181,19 +164,16 @@ with col_right:
 
 st.subheader("Volume de Requisicoes ao Longo do Tempo")
 if gold_available:
-    df_time = con.execute(
-        """
+    df_time = con.execute("""
         SELECT
             request_date AS data,
             total_requests AS volume,
             total_errors AS erros
         FROM gold.mart_daily_traffic
         ORDER BY request_date
-        """
-    ).df()
+        """).df()
 else:
-    df_time = con.execute(
-        f"""
+    df_time = con.execute(f"""
         SELECT
             dt_partition AS data,
             COUNT(*) AS volume,
@@ -201,8 +181,7 @@ else:
         FROM '{LAKE_PATH}'
         GROUP BY dt_partition
         ORDER BY dt_partition
-        """
-    ).df()
+        """).df()
 
 fig_time = px.line(
     df_time,
@@ -219,8 +198,7 @@ if quarantine_exists and quarantine_count > 0:
     st.subheader("Quarentena de Qualidade")
     st.warning(f"{quarantine_count:,} registros foram rejeitados.")
 
-    df_quarantine = con.execute(
-        f"""
+    df_quarantine = con.execute(f"""
         SELECT
             rejection_reason AS motivo,
             COUNT(*) AS quantidade,
@@ -228,8 +206,7 @@ if quarantine_exists and quarantine_count > 0:
         FROM '{QUARANTINE_PATH}'
         GROUP BY rejection_reason
         ORDER BY quantidade DESC
-    """
-    ).df()
+    """).df()
 
     st.dataframe(df_quarantine, use_container_width=True, hide_index=True)
 

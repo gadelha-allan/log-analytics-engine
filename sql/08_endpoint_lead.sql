@@ -1,4 +1,3 @@
--- Show the next observed date and the change in traffic for each endpoint.
 WITH daily_endpoint AS (
     SELECT
         endpoint,

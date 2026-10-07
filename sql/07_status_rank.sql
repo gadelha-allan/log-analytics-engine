@@ -1,4 +1,3 @@
--- Rank HTTP statuses by frequency inside each status class.
 WITH status_counts AS (
     SELECT
         CAST(FLOOR(status / 100) AS INTEGER) AS status_class,
