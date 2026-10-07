@@ -65,7 +65,7 @@ flowchart LR
    - `negative_size` — tamanho de resposta negativo.
    - `invalid_date` — data que não pode ser convertida.
 
-3. **Load** — `main.py` apaga a saída anterior e grava o `LazyFrame` válido como Parquet particionado por `dt_partition` via `sink_parquet` (streaming). Linhas rejeitadas são gravadas em `data/processed/quarantine/quarantine.parquet` com a linha original em `raw` e o motivo em `rejection_reason`.
+3. **Load** — na primeira execução, o pipeline grava o `LazyFrame` válido como Parquet particionado por `dt_partition` via `sink_parquet` (streaming). Substituir dados já publicados exige `--full-refresh`. Linhas rejeitadas são gravadas em `data/processed/quarantine/quarantine.parquet` com a linha original em `raw` e o motivo em `rejection_reason`.
 
 Todo o pipeline roda em modo *lazy* até o passo de escrita, permitindo que o Polars otimize o plano de execução antes de processar os dados de fato.
 
@@ -178,6 +178,7 @@ python -m src.main [OPÇÕES]
 | `--quarantine` | `data/processed/quarantine` | Diretório de quarentena |
 | `--generate` | `False` | Gera logs sintéticos se o arquivo não existir |
 | `--lines` | `5_000_000` | Número de linhas a gerar (requer `--generate`) |
+| `--full-refresh` | `False` | Autoriza substituir os dados publicados por uma reconstrução completa |
 
 **Exemplos:**
 
@@ -190,6 +191,9 @@ python -m src.main --generate --lines 1_000_000
 
 # Teste rápido com 10 mil linhas
 python -m src.main --generate --lines 10_000
+
+# Substitui todo o conjunto publicado pelo conteúdo completo da entrada
+python -m src.main --raw data/raw/server.log --full-refresh
 ```
 
 ---
@@ -246,7 +250,7 @@ Os testes usam arquivos temporários via fixtures `pytest` (`tmp_path`, `tempfil
 - **Saída válida:** `data/processed/logs_lake/`, particionada por `dt_partition` no padrão Hive (`dt_partition=AAAA-MM-DD/*.parquet`).
 - **Saída de quarentena:** `data/processed/quarantine/quarantine.parquet` — apenas gerado quando há linhas rejeitadas.
 
-A cada execução a saída anterior é apagada e regravada — o pipeline é **idempotente**.
+A primeira execução é permitida quando o lake e a quarentena não contêm arquivos. Se já houver arquivos publicados, executar sem `--full-refresh` retorna um erro e mantém os arquivos anteriores intactos. Com a flag, todo o conjunto é reconstruído: a entrada deve conter todos os registros que você deseja publicar. Uma entrada com apenas um dia substitui o conjunto anterior. Execuções consecutivas com a mesma entrada e a flag são **idempotentes**.
 
 > 💡 **Dica:** para testes rápidos sem aguardar a geração de 5 milhões de linhas, use `--lines 10_000`. Adicione `data/` ao `.gitignore`, pois logs e Parquet são artefatos gerados, não código-fonte.
 

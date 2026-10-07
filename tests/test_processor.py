@@ -7,7 +7,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from src.processor import process_logs
+from src.processor import FullRefreshRequiredError, process_logs
 
 
 def test_extracao_regex_campos_corretos(
@@ -83,7 +83,7 @@ def test_tipagem_colunas(mock_log_file: Path, temp_output_dirs: tuple) -> None:
 def test_pipeline_idempotente(mock_log_file: Path, temp_output_dirs: tuple) -> None:
     output, quarantine = temp_output_dirs
     result1 = process_logs(mock_log_file, output, quarantine)
-    result2 = process_logs(mock_log_file, output, quarantine)
+    result2 = process_logs(mock_log_file, output, quarantine, full_refresh=True)
     assert result1["metrics"]["valid_count"] == result2["metrics"]["valid_count"]
 
 
@@ -257,3 +257,81 @@ def test_quarentena_preserva_raw_e_conserva_registros(
     if expected_valid:
         persisted_valid = pl.read_parquet(list(output.rglob("*.parquet")))
         assert Counter(persisted_valid["raw"].to_list()) == Counter(expected_valid)
+
+
+@pytest.mark.parametrize("create_empty_dirs", [False, True])
+def test_primeira_execucao_permitida_sem_full_refresh(
+    create_empty_dirs: bool, mock_log_file: Path, temp_output_dirs: tuple[Path, Path]
+) -> None:
+    output, quarantine = temp_output_dirs
+    if create_empty_dirs:
+        (output / "dt_partition=2026-07-27").mkdir(parents=True)
+        quarantine.mkdir()
+
+    result = process_logs(mock_log_file, output, quarantine)
+
+    assert result["metrics"]["valid_count"] == 2
+    assert result["metrics"]["quarantine_count"] == 3
+    assert pl.read_parquet(list(output.rglob("*.parquet"))).height == 2
+    assert pl.read_parquet(quarantine / "quarantine.parquet").height == 3
+
+
+@pytest.mark.parametrize("published_output", ["lake", "quarantine", "both"])
+def test_recusa_reprocessamento_preserva_arquivos(
+    published_output: str, tmp_path: Path, temp_output_dirs: tuple[Path, Path]
+) -> None:
+    output, quarantine = temp_output_dirs
+    valid_line = (
+        '192.168.0.1 - - [27/Jul/2026:14:32:10 +0000] "GET / HTTP/1.1" 200 100\n'
+    )
+    initial_input = tmp_path / "initial.log"
+    initial_input.write_text(
+        (valid_line if published_output != "quarantine" else "")
+        + ("linha invalida\n" if published_output != "lake" else "")
+    )
+    process_logs(initial_input, output, quarantine)
+    before = {
+        path: (path.read_bytes(), path.stat().st_mtime_ns)
+        for directory in (output, quarantine)
+        for path in directory.rglob("*")
+        if path.is_file()
+    }
+    assert before
+    replacement_input = tmp_path / "replacement.log"
+    replacement_input.write_text(valid_line.replace("27/Jul", "28/Jul"))
+
+    with pytest.raises(FullRefreshRequiredError, match="--full-refresh") as error:
+        process_logs(replacement_input, output, quarantine)
+
+    assert "Ja existem dados publicados" in str(error.value)
+    assert "reconstrucao completa" in str(error.value)
+    after = {
+        path: (path.read_bytes(), path.stat().st_mtime_ns)
+        for directory in (output, quarantine)
+        for path in directory.rglob("*")
+        if path.is_file()
+    }
+    assert after == before
+
+
+def test_full_refresh_substitui_conjunto_completo(
+    mock_log_file: Path, tmp_path: Path, temp_output_dirs: tuple[Path, Path]
+) -> None:
+    output, quarantine = temp_output_dirs
+    process_logs(mock_log_file, output, quarantine)
+    replacement_line = (
+        '10.0.0.1 - - [28/Jul/2026:12:00:00 +0000] "GET /new HTTP/1.1" 200 100'
+    )
+    replacement_input = tmp_path / "replacement.log"
+    replacement_input.write_text(replacement_line + "\n")
+
+    result = process_logs(replacement_input, output, quarantine, full_refresh=True)
+
+    assert result["metrics"]["total_input"] == result["metrics"]["valid_count"] == 1
+    assert result["metrics"]["quarantine_count"] == 0
+    assert result["valid"]["raw"].to_list() == [replacement_line]
+    persisted = pl.read_parquet(list(output.rglob("*.parquet")))
+    assert persisted["raw"].to_list() == [replacement_line]
+    assert persisted["dt_partition"].to_list() == [date(2026, 7, 28)]
+    assert not (output / "dt_partition=2026-07-27").exists()
+    assert not (quarantine / "quarantine.parquet").exists()

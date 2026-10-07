@@ -86,6 +86,13 @@ python -m src.main [OPTIONS]
 | `--quarantine` | `data/processed/quarantine` | Rejected-record output |
 | `--generate` | `False` | Generate input when it does not exist |
 | `--lines` | `5_000_000` | Number of synthetic lines to generate |
+| `--full-refresh` | `False` | Authorize replacing published data with a complete rebuild |
+
+The first run is allowed when the lake and quarantine contain no files. Later runs require `--full-refresh`; without it, the CLI exits with an error and preserves the published files. The input must contain the entire dataset to publish. A file containing only one day replaces the previous dataset when the flag is supplied.
+
+```bash
+python -m src.main --raw data/raw/server.log --full-refresh
+```
 
 ## Processed schema
 

@@ -13,6 +13,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+class FullRefreshRequiredError(FileExistsError):
+    """Published output cannot be replaced without explicit full-refresh intent."""
+
+
 LOG_PATTERN = (
     r"^(?P<ip>(?:25[0-5]|2[0-4]\d|[01]?\d\d?)(?:\.(?:25[0-5]|2[0-4]\d|[01]?\d\d?)){3})"
     r" - - \[(?P<date>.*?)\] "
@@ -77,6 +82,7 @@ def process_logs(
     file_path: str | Path,
     output_dir: str | Path = "data/processed/logs_lake",
     quarantine_dir: str | Path = "data/processed/quarantine",
+    full_refresh: bool = False,
 ) -> dict[str, Any]:
     file_path = Path(file_path)
     output_dir = Path(output_dir)
@@ -84,6 +90,18 @@ def process_logs(
 
     if not file_path.exists():
         raise FileNotFoundError(f"Arquivo nao encontrado: {file_path}")
+
+    if not full_refresh:
+        for directory in (output_dir, quarantine_dir):
+            if directory.exists() and any(
+                path.is_file() for path in directory.rglob("*")
+            ):
+                raise FullRefreshRequiredError(
+                    f"Ja existem dados publicados em {directory}. "
+                    "Nenhum arquivo foi substituido. Use --full-refresh para autorizar "
+                    "a reconstrucao completa; a entrada deve conter todo o conjunto "
+                    "que deseja publicar."
+                )
 
     logger.info("Iniciando pipeline: %s", file_path)
 
