@@ -3,14 +3,12 @@ version: 2
 sources:
   - name: silver
     description: >
-      Clean, validated access-log records written as partitioned Parquet by the
-      Polars pipeline. The pipeline is the quality gate for this source.
+      Validated access logs from the Polars pipeline, stored as partitioned Parquet.
     schema: main
     tables:
       - name: logs
         description: >
-          The current Silver log lake. Each Hive-style dt_partition directory
-          contains a Parquet file with validated HTTP access-log records.
+          Silver Parquet files partitioned by dt_partition.
         meta:
           external_location: "read_parquet('{{ env_var('LOG_ANALYTICS_SILVER_PATH', 'data/processed/logs_lake/**/*.parquet') }}', hive_partitioning = true)"
         columns:

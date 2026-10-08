@@ -1,4 +1,3 @@
-# Copy this file to profiles.yml before invoking dbt locally.
 # DBT_DUCKDB_PATH may be an absolute path or relative to the repository root.
 log_analytics_engine:
   target: dev

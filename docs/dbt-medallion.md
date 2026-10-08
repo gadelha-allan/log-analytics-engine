@@ -1,6 +1,6 @@
 # dbt Medallion architecture
 
-The project uses a Medallion architecture with clear ownership boundaries. dbt does not replace the existing Polars processor: Polars remains the parser and data-quality gate.
+Polars parses and validates the logs. dbt reads the resulting Silver Parquet lake and builds the Gold tables.
 
 ```mermaid
 flowchart LR
@@ -20,8 +20,8 @@ flowchart LR
 |---|---|---|---|
 | Bronze | Log producer | `data/raw/server.log` | Immutable, unstructured Common Log Format input. |
 | Silver | Polars pipeline | `data/processed/logs_lake/dt_partition=*/` | Regex parsing, type conversion, validation, rejection quarantine, and partitioned Parquet output. |
-| dbt staging | dbt + DuckDB | `analytics.stg_logs` view | Stable, typed analytical names and documentation over Silver. |
-| Gold | dbt + DuckDB | `gold.fact_requests`, dimensions, and marts | Dimensional facts, conformed dimensions, aggregates, KPIs, and dashboard-ready models. |
+| dbt staging | dbt + DuckDB | `analytics.stg_logs` view | Typed column names over Silver. |
+| Gold | dbt + DuckDB | `gold.fact_requests`, dimensions, and marts | Request facts, date and endpoint dimensions, and dashboard aggregates. |
 
 ## Setup
 

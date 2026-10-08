@@ -1,6 +1,6 @@
 # Gold star schema
 
-The dbt Gold layer turns validated Silver logs into a dimensional model for dashboards and downstream analysis. `fact_requests` has one row for every validated HTTP request; `dim_date` and `dim_endpoint` provide conformed descriptive context.
+`fact_requests` stores one row per validated HTTP request. `dim_date` and `dim_endpoint` hold the date and route attributes used by the dashboard aggregates.
 
 ```mermaid
 erDiagram
@@ -34,7 +34,7 @@ erDiagram
 
 | Model | Grain | Purpose |
 |---|---|---|
-| `gold.fact_requests` | One validated HTTP request | Atomic facts and dimension foreign keys. |
+| `gold.fact_requests` | One validated HTTP request | Request fields and foreign keys for date and endpoint. |
 | `gold.dim_date` | One calendar day | Date attributes for time-series analysis. |
 | `gold.dim_endpoint` | One observed endpoint | Endpoint route attributes and a deterministic key. |
 | `gold.mart_daily_traffic` | One request date | Daily traffic, errors, response size, and unique-client metrics. |

@@ -11,7 +11,7 @@ services:
     container_name: log-analytics-dashboard
     command: >
       sh -c "until [ -d /app/data/processed/logs_lake ]; do
-        echo 'Aguardando dados...'; sleep 2; done;
+        echo 'Aguardando data/processed/logs_lake'; sleep 2; done;
       streamlit run src/dashboard.py --server.port=8501 --server.address=0.0.0.0"
     ports:
       - "8501:8501"
