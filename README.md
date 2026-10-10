@@ -82,6 +82,10 @@ The first run is allowed when the lake and quarantine contain no files. Later ru
 python -m src.main --raw data/raw/server.log --full-refresh
 ```
 
+The lake and quarantine are prepared in temporary directories beside their destinations. Every Parquet is read back to check its schema and row count before replacement. Parsing, writing, or validation failures preserve published files and remove the temporary directories. The two destinations must be separate directories, with neither nested inside the other.
+
+Empty input is refused, including with `--full-refresh`. If every line is rejected, the run publishes all lines in quarantine and an empty lake with its schema in `_empty.parquet`; with `--full-refresh`, this replaces the previous dataset.
+
 ## Processed schema
 
 | Column | Type | Description |

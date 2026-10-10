@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 import shutil
+from contextlib import ExitStack
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
@@ -25,6 +27,47 @@ LOG_PATTERN = (
     r"(?P<status>\d{3}) "
     r"(?P<size>-?\d+)$"
 )
+
+_LOG_SCHEMA = pl.Schema(
+    {
+        "raw": pl.String,
+        "ip": pl.String,
+        "date": pl.String,
+        "method": pl.String,
+        "endpoint": pl.String,
+        "status": pl.Int32,
+        "size": pl.Int64,
+        "dt_partition": pl.Date,
+        "is_error": pl.Boolean,
+    }
+)
+_QUARANTINE_SCHEMA = pl.Schema({**_LOG_SCHEMA, "rejection_reason": pl.String()})
+
+
+def _validate_prepared_output(
+    directory: Path, expected_schema: pl.Schema, expected_count: int
+) -> pl.DataFrame:
+    parquet_files = sorted(directory.rglob("*.parquet"))
+    for parquet_file in parquet_files:
+        schema = pl.scan_parquet(parquet_file, hive_partitioning=False).collect_schema()
+        if schema != expected_schema:
+            raise ValueError(
+                f"Schema invalido em {parquet_file}: "
+                f"esperado {expected_schema}, encontrado {schema}"
+            )
+
+    # Read the data pages as well as metadata before replacing published files.
+    prepared = (
+        pl.read_parquet(parquet_files, hive_partitioning=False)
+        if parquet_files
+        else pl.DataFrame(schema=expected_schema)
+    )
+    if prepared.height != expected_count:
+        raise ValueError(
+            f"Contagem invalida em {directory}: "
+            f"esperados {expected_count} registros, encontrados {prepared.height}"
+        )
+    return prepared
 
 
 def _extract_and_type(lf: LazyFrame) -> LazyFrame:
@@ -91,6 +134,16 @@ def process_logs(
     if not file_path.exists():
         raise FileNotFoundError(f"Arquivo nao encontrado: {file_path}")
 
+    lake_path = output_dir.resolve()
+    quarantine_path = quarantine_dir.resolve()
+    if lake_path.is_relative_to(quarantine_path) or quarantine_path.is_relative_to(
+        lake_path
+    ):
+        raise ValueError(
+            "Lake e quarentena precisam de diretorios separados, "
+            f"sem sobreposicao: {output_dir}, {quarantine_dir}"
+        )
+
     if not full_refresh:
         for directory in (output_dir, quarantine_dir):
             if directory.exists() and any(
@@ -110,12 +163,16 @@ def process_logs(
         lf_raw = pl.scan_csv(
             file_path,
             has_header=False,
-            new_columns=["raw"],
+            schema={"raw": pl.String},
             separator="\n",
             quote_char=None,
-            infer_schema=False,
+            raise_if_empty=False,
         ).with_columns(pl.col("raw").fill_null(""))
         total_input = lf_raw.select(pl.len()).collect().item()
+        if total_input == 0:
+            raise ValueError(
+                f"Arquivo de entrada vazio: {file_path}. Nenhum dado foi publicado."
+            )
         logger.info("Total de linhas de entrada: %s", f"{total_input:,}")
 
         lf_typed = _extract_and_type(lf_raw)
@@ -123,6 +180,11 @@ def process_logs(
 
         valid_count = lf_valid.select(pl.len()).collect().item()
         quarantine_count = lf_quarantine.select(pl.len()).collect().item()
+        if total_input != valid_count + quarantine_count:
+            raise ValueError(
+                f"Contagem inconsistente para {file_path}: entrada={total_input}, "
+                f"validos={valid_count}, rejeitados={quarantine_count}"
+            )
         rejection_breakdown = (
             lf_quarantine.group_by("rejection_reason")
             .agg(pl.len().alias("count"))
@@ -140,28 +202,53 @@ def process_logs(
                 "  -> %s: %s registros", row["rejection_reason"], f'{row["count"]:,}'
             )
 
-        output_dir.mkdir(parents=True, exist_ok=True)
-        quarantine_dir.mkdir(parents=True, exist_ok=True)
+        output_dir.parent.mkdir(parents=True, exist_ok=True)
+        quarantine_dir.parent.mkdir(parents=True, exist_ok=True)
+        with ExitStack() as staging:
+            lake_stage = Path(
+                staging.enter_context(
+                    TemporaryDirectory(
+                        prefix=f".{output_dir.name}.staging-", dir=output_dir.parent
+                    )
+                )
+            )
+            quarantine_stage = Path(
+                staging.enter_context(
+                    TemporaryDirectory(
+                        prefix=f".{quarantine_dir.name}.staging-",
+                        dir=quarantine_dir.parent,
+                    )
+                )
+            )
 
-        for subdir in output_dir.iterdir():
-            if subdir.is_dir():
-                shutil.rmtree(subdir)
-        for f in quarantine_dir.glob("*.parquet"):
-            f.unlink()
+            logger.info("Preparando Parquets em %s", lake_stage)
+            if valid_count:
+                lf_valid.sink_parquet(
+                    pl.PartitionBy(lake_stage, key="dt_partition"), mkdir=True
+                )
+            else:
+                lf_valid.sink_parquet(lake_stage / "_empty.parquet")
 
-        logger.info("Gravando Parquet particionado (streaming)...")
-        lf_valid.sink_parquet(
-            pl.PartitionBy(output_dir, key="dt_partition"),
-            mkdir=True,
-        )
+            if quarantine_count:
+                logger.info("Preparando quarentena em %s", quarantine_stage)
+                lf_quarantine.sink_parquet(quarantine_stage / "quarantine.parquet")
 
-        if quarantine_count > 0:
-            logger.info("Gravando quarentena...")
-            lf_quarantine.sink_parquet(quarantine_dir / "quarantine.parquet")
+            valid = _validate_prepared_output(lake_stage, _LOG_SCHEMA, valid_count)
+            quarantine = _validate_prepared_output(
+                quarantine_stage, _QUARANTINE_SCHEMA, quarantine_count
+            )
+
+            for prepared, published in (
+                (lake_stage, output_dir),
+                (quarantine_stage, quarantine_dir),
+            ):
+                if published.exists():
+                    shutil.rmtree(published)
+                prepared.rename(published)
 
         return {
-            "valid": lf_valid.collect(),
-            "quarantine": lf_quarantine.collect() if quarantine_count > 0 else None,
+            "valid": valid,
+            "quarantine": quarantine if quarantine_count else None,
             "metrics": {
                 "total_input": total_input,
                 "valid_count": valid_count,

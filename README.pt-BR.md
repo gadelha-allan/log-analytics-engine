@@ -79,6 +79,10 @@ Com a flag, a entrada substitui todo o conjunto publicado. Ela precisa conter to
 python -m src.main --raw data/raw/server.log --full-refresh
 ```
 
+O lake e a quarentena são preparados em diretórios temporários ao lado dos destinos. Todos os Parquets são relidos para conferir schema e contagem antes da substituição. Falhas de parsing, escrita ou validação preservam os arquivos publicados e removem os temporários. Os destinos precisam ser separados, sem um dentro do outro.
+
+Entrada vazia é recusada, inclusive com `--full-refresh`. Se todas as linhas forem rejeitadas, a execução publica todas na quarentena e um lake vazio com schema em `_empty.parquet`; com `--full-refresh`, isso substitui o conjunto anterior.
+
 ## Dados processados
 
 O lake fica em `data/processed/logs_lake/dt_partition=AAAA-MM-DD/*.parquet`.
