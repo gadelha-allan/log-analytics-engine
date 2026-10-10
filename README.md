@@ -84,6 +84,10 @@ python -m src.main --raw data/raw/server.log --full-refresh
 
 The lake and quarantine are prepared in temporary directories beside their destinations. Every Parquet is read back to check its schema and row count before replacement. Parsing, writing, or validation failures preserve published files and remove the temporary directories. The two destinations must be separate directories, with neither nested inside the other.
 
+During publication, previous directories are moved to sibling backups. Both prepared outputs are installed from the same run, including an empty quarantine when no lines are rejected. A publication failure restores the previous directories; backups are removed after both replacements succeed or recovery completes. If recovery fails, the error reports the retained backup paths. Failure to delete a backup after publication is logged without undoing the new output.
+
+This mechanism supports local execution with one process at a time. Replacing multiple directories is not an atomic transaction for concurrent readers: they may observe missing directories or outputs from different runs during replacement. It does not recover automatically after a process kill or power loss.
+
 Empty input is refused, including with `--full-refresh`. If every line is rejected, the run publishes all lines in quarantine and an empty lake with its schema in `_empty.parquet`; with `--full-refresh`, this replaces the previous dataset.
 
 ## Processed schema

@@ -81,6 +81,10 @@ python -m src.main --raw data/raw/server.log --full-refresh
 
 O lake e a quarentena são preparados em diretórios temporários ao lado dos destinos. Todos os Parquets são relidos para conferir schema e contagem antes da substituição. Falhas de parsing, escrita ou validação preservam os arquivos publicados e removem os temporários. Os destinos precisam ser separados, sem um dentro do outro.
 
+Durante a publicação, os diretórios anteriores são movidos para backups ao lado dos destinos. As duas saídas preparadas vêm da mesma execução, incluindo uma quarentena vazia quando não há rejeitados. Uma falha na publicação restaura os diretórios anteriores; os backups são removidos após concluir as duas substituições ou a recuperação. Se a recuperação falhar, o erro informa os caminhos dos backups preservados. Falhas ao apagar um backup após a publicação são registradas sem desfazer a nova saída.
+
+O mecanismo atende à execução local, com um processo por vez. A troca de vários diretórios não é uma transação atômica para leitores concorrentes: durante a substituição, eles podem encontrar diretórios ausentes ou saídas de execuções diferentes. Não há recuperação automática após encerramento forçado do processo ou queda de energia.
+
 Entrada vazia é recusada, inclusive com `--full-refresh`. Se todas as linhas forem rejeitadas, a execução publica todas na quarentena e um lake vazio com schema em `_empty.parquet`; com `--full-refresh`, isso substitui o conjunto anterior.
 
 ## Dados processados

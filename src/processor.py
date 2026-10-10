@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import shutil
 from contextlib import ExitStack
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -9,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 from polars.exceptions import ComputeError
+
+from .publication import publish_outputs
 
 if TYPE_CHECKING:
     from polars import LazyFrame
@@ -237,14 +238,14 @@ def process_logs(
             quarantine = _validate_prepared_output(
                 quarantine_stage, _QUARANTINE_SCHEMA, quarantine_count
             )
-
-            for prepared, published in (
-                (lake_stage, output_dir),
-                (quarantine_stage, quarantine_dir),
-            ):
-                if published.exists():
-                    shutil.rmtree(published)
-                prepared.rename(published)
+            logger.info(
+                "Preparacao validada: %s validos e %s rejeitados",
+                valid_count,
+                quarantine_count,
+            )
+            publish_outputs(
+                ((lake_stage, output_dir), (quarantine_stage, quarantine_dir))
+            )
 
         return {
             "valid": valid,
