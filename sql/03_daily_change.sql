@@ -1,4 +1,3 @@
--- Compare daily request and error counts with the previous observed day.
 WITH daily AS (
     SELECT
         dt_partition AS request_date,

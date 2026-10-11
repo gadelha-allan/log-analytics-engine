@@ -7,7 +7,7 @@ These DuckDB queries run directly against the partitioned Parquet lake. The Pyth
 | `01_daily_traffic.sql` | Daily requests and errors | CTE, conditional aggregation |
 | `02_top_endpoints_by_period.sql` | Top endpoints in the latest seven-day period | CTEs, date filtering |
 | `03_daily_change.sql` | Day-over-day request and error changes | `LAG` |
-| `04_rolling_average.sql` | Seven-day moving averages | framed window |
+| `04_rolling_average.sql` | Moving averages over seven observed dates | framed window |
 | `05_response_size_percentiles.sql` | Response-size distribution | `quantile_cont` |
 | `06_daily_endpoint_row_number.sql` | Daily endpoint leaders | `ROW_NUMBER` |
 | `07_status_rank.sql` | Status popularity within class | `RANK` |

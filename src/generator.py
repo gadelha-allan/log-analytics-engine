@@ -77,8 +77,8 @@ def _generate_timestamp(base_date: datetime, days_spread: int = 30) -> str:
         minutes=random.randint(0, 59),
         seconds=random.randint(0, 59),
     )
-    ts = base_date - offset
-    return ts.strftime("%d/%b/%Y:%H:%M:%S %z")
+    timestamp = base_date - offset
+    return timestamp.strftime("%d/%b/%Y:%H:%M:%S %z")
 
 
 def _generate_endpoint() -> str:
@@ -112,7 +112,7 @@ def generate_mock_logs(
 
     logger.info("Gerando %s linhas de log em %s", f"{lines:,}", filepath)
 
-    with open(filepath, "w", encoding="utf-8") as f:
+    with open(filepath, "w", encoding="utf-8") as log_file:
         for _ in range(lines):
             ip = _generate_ip()
             date = _generate_timestamp(base_date, days_spread)
@@ -124,9 +124,9 @@ def generate_mock_logs(
             log_line = (
                 f'{ip} - - [{date}] "{method} {endpoint} HTTP/1.1" {status} {size}\n'
             )
-            f.write(log_line)
+            log_file.write(log_line)
 
-    logger.info("Logs gerados com sucesso: %s", filepath)
+    logger.info("Log gravado: %s", filepath)
     return filepath
 
 

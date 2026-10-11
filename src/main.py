@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from .generator import generate_mock_logs
-from .processor import process_logs
+from .processor import FullRefreshRequiredError, process_logs
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,6 +23,7 @@ def run_pipeline(
     quarantine_dir: str | Path = "data/processed/quarantine",
     generate_if_missing: bool = False,
     lines: int = 5_000_000,
+    full_refresh: bool = False,
 ) -> dict:
     raw_path = Path(raw_path)
     processed_dir = Path(processed_dir)
@@ -30,7 +31,7 @@ def run_pipeline(
 
     if not raw_path.exists():
         if generate_if_missing:
-            logger.warning("Arquivo nao encontrado. Gerando dados sinteticos...")
+            logger.warning("Arquivo %s nao existe; gerando %s linhas", raw_path, lines)
             generate_mock_logs(raw_path, lines=lines)
         else:
             logger.error("Arquivo nao encontrado: %s", raw_path)
@@ -40,37 +41,39 @@ def run_pipeline(
     start_time = time.perf_counter()
 
     try:
-        logger.info("Iniciando pipeline ETL")
-        result = process_logs(
+        logger.info("Processando %s", raw_path)
+        processed_logs = process_logs(
             file_path=raw_path,
             output_dir=processed_dir,
             quarantine_dir=quarantine_dir,
+            full_refresh=full_refresh,
         )
 
         elapsed = time.perf_counter() - start_time
-        metrics = result["metrics"]
+        metrics = processed_logs["metrics"]
         throughput = metrics["valid_count"] / elapsed if elapsed > 0 else 0
 
-        logger.info("=" * 60)
-        logger.info("PIPELINE CONCLUIDO")
-        logger.info("   Tempo total:       %.2f s", elapsed)
-        logger.info("   Linhas de entrada: %s", f'{metrics["total_input"]:,}')
-        logger.info("   Linhas validas:    %s", f'{metrics["valid_count"]:,}')
+        logger.info("Pipeline concluido: %s", raw_path)
+        logger.info("Tempo total: %.2f s", elapsed)
+        logger.info("Linhas de entrada: %s", f'{metrics["total_input"]:,}')
+        logger.info("Linhas validas: %s", f'{metrics["valid_count"]:,}')
         logger.info(
-            "   Rejeitadas:        %s (%.2f%%)",
+            "Rejeitadas: %s (%.2f%%)",
             f'{metrics["quarantine_count"]:,}',
             metrics["rejection_rate"] * 100,
         )
-        logger.info("   Throughput:        %s linhas/s", f"{throughput:,.0f}")
-        logger.info("=" * 60)
+        logger.info("Linhas por segundo: %s", f"{throughput:,.0f}")
 
-        return result
+        return processed_logs
 
+    except FullRefreshRequiredError as exc:
+        logger.error("%s", exc)
+        raise
     except FileNotFoundError:
         logger.error("Arquivo nao encontrado: %s", raw_path)
         raise
     except Exception:
-        logger.exception("Pipeline falhou")
+        logger.exception("Falha no pipeline para %s", raw_path)
         raise
 
 
@@ -95,15 +98,27 @@ def main() -> None:
     parser.add_argument(
         "--lines", type=int, default=5_000_000, help="Numero de linhas a gerar"
     )
+    parser.add_argument(
+        "--full-refresh",
+        action="store_true",
+        help=(
+            "Autoriza substituir os dados publicados por uma reconstrucao completa; "
+            "a entrada deve conter todo o conjunto desejado"
+        ),
+    )
     args = parser.parse_args()
 
-    run_pipeline(
-        raw_path=args.raw,
-        processed_dir=args.output,
-        quarantine_dir=args.quarantine,
-        generate_if_missing=args.generate,
-        lines=args.lines,
-    )
+    try:
+        run_pipeline(
+            raw_path=args.raw,
+            processed_dir=args.output,
+            quarantine_dir=args.quarantine,
+            generate_if_missing=args.generate,
+            lines=args.lines,
+            full_refresh=args.full_refresh,
+        )
+    except FullRefreshRequiredError:
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

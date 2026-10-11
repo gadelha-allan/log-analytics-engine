@@ -1,4 +1,3 @@
--- Daily request volume, error volume, error rate, and average response size.
 WITH daily AS (
     SELECT
         dt_partition AS request_date,

@@ -1,4 +1,4 @@
--- Seven-observation rolling averages for requests, errors, and error rate.
+-- Missing dates are not filled; the frame spans seven observed dates.
 WITH daily AS (
     SELECT
         dt_partition AS request_date,

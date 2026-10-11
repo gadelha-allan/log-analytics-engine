@@ -3,8 +3,7 @@ version: 2
 models:
   - name: stg_logs
     description: >
-      Typed, documented dbt staging view over the validated Silver log lake.
-      It is the stable interface for future Gold analytical models.
+      Typed staging view over the validated Silver log lake.
     columns:
       - name: client_ip
         description: Client IPv4 address from the validated Silver record.

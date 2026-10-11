@@ -1,5 +1,3 @@
-"""Execute the versioned DuckDB analytical queries against the Parquet lake."""
-
 from __future__ import annotations
 
 import argparse
@@ -15,12 +13,11 @@ LAKE_PATH_TOKEN = "{{lake_path}}"
 
 
 def discover_queries(sql_dir: Path = DEFAULT_SQL_DIR) -> dict[str, Path]:
-    """Return analytical query files keyed by filename stem."""
     return {path.stem: path for path in sorted(sql_dir.glob("[0-9][0-9]_*.sql"))}
 
 
 def load_query(query_path: Path, lake_path: str = DEFAULT_LAKE_PATH) -> str:
-    """Load a SQL file and inject a safely escaped Parquet glob."""
+    # The glob replaces a SQL string literal, so embedded quotes must be escaped.
     escaped_path = lake_path.replace("'", "''")
     return query_path.read_text(encoding="utf-8").replace(LAKE_PATH_TOKEN, escaped_path)
 
@@ -30,28 +27,27 @@ def run_analytics_queries(
     query_names: Sequence[str] | None = None,
     sql_dir: Path = DEFAULT_SQL_DIR,
 ) -> dict[str, Any]:
-    """Execute selected analytical queries and return their pandas results."""
-    queries = discover_queries(sql_dir)
-    selected_names = list(query_names) if query_names else list(queries)
-    unknown = sorted(set(selected_names) - set(queries))
+    query_files = discover_queries(sql_dir)
+    selected_names = list(query_names) if query_names else list(query_files)
+    unknown = sorted(set(selected_names) - set(query_files))
     if unknown:
-        available = ", ".join(queries)
+        available = ", ".join(query_files)
         raise ValueError(
             f"Unknown queries: {', '.join(unknown)}. Available: {available}"
         )
 
-    results: dict[str, Any] = {}
+    query_results: dict[str, Any] = {}
     with duckdb.connect() as connection:
         for name in selected_names:
-            results[name] = connection.execute(
-                load_query(queries[name], lake_path)
+            query_results[name] = connection.execute(
+                load_query(query_files[name], lake_path)
             ).df()
-    return results
+    return query_results
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run advanced DuckDB analytics against the Parquet log lake."
+        description="Run DuckDB queries against the Parquet log lake."
     )
     parser.add_argument(
         "--lake-path",
@@ -73,11 +69,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    """Provide the command-line entry point for the SQL catalog."""
     args = _build_parser().parse_args()
-    available = discover_queries()
+    query_files = discover_queries()
     if args.list:
-        print("\n".join(available))
+        print("\n".join(query_files))
         return
 
     lake_root = args.lake_path.split("*")[0]
@@ -87,9 +82,11 @@ def main() -> None:
             "Run `python -m src.main --generate` first."
         )
 
-    for name, result in run_analytics_queries(args.lake_path, args.queries).items():
-        print(f"\n=== {name} ===")
-        print(result.to_string(index=False))
+    for name, query_result in run_analytics_queries(
+        args.lake_path, args.queries
+    ).items():
+        print(f"\n{name}")
+        print(query_result.to_string(index=False))
 
 
 if __name__ == "__main__":

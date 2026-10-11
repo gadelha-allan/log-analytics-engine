@@ -1,7 +1,6 @@
 {{ config(materialized='view') }}
 
--- This model is the dbt contract over the Polars-managed Silver lake.
--- Parsing and data-quality enforcement remain in src/processor.py.
+-- Validation belongs to the Polars pipeline.
 select
     ip as client_ip,
     date as raw_request_timestamp,

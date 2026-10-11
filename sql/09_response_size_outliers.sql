@@ -1,4 +1,3 @@
--- Requests whose response is larger than the endpoint-specific p95.
 WITH thresholds AS (
     SELECT
         endpoint,

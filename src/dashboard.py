@@ -17,14 +17,16 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.title("Log Analytics Engine - Executive Dashboard")
-st.markdown("Monitoramento do Data Lake com metricas de qualidade.")
+st.title("Log Analytics Engine")
+st.markdown("Requisicoes, erros HTTP e registros rejeitados.")
 
 lake_exists = os.path.exists("data/processed/logs_lake")
 quarantine_exists = os.path.exists("data/processed/quarantine")
 
 if not lake_exists:
-    st.error("Data Lake nao gerado. Execute python -m src.main --generate primeiro.")
+    st.error(
+        "data/processed/logs_lake nao existe. Execute python -m src.main --generate."
+    )
     st.stop()
 
 con = duckdb.connect()
@@ -82,7 +84,7 @@ else:
     ).fetchone()
 
 if kpis is None:
-    st.error("Nao foi possivel obter os KPIs do Data Lake.")
+    st.error("A consulta de volume, erros e tamanho medio nao retornou uma linha.")
     st.stop()
 
 total_logs, total_erros, tamanho_medio, endpoints_unicos, ips_unicos = kpis

@@ -3,8 +3,7 @@ version: 2
 models:
   - name: fact_requests
     description: >
-      Gold fact table at one row per validated HTTP request. It preserves request-level
-      measures and links to the date and endpoint dimensions.
+      One row per validated HTTP request, linked to date and endpoint dimensions.
     columns:
       - name: request_key
         description: Warehouse-generated unique identifier for the request row.
@@ -23,7 +22,7 @@ models:
         data_tests:
           - not_null
       - name: raw_request_timestamp
-        description: Original request timestamp retained for lineage.
+        description: Original request timestamp.
         data_tests:
           - not_null
       - name: http_method
@@ -70,7 +69,7 @@ models:
               values: [true, false]
 
   - name: dim_endpoint
-    description: Unique dimension of observed HTTP endpoints and their route metadata.
+    description: Observed endpoints and their route attributes.
     columns:
       - name: endpoint_key
         description: Deterministic MD5 surrogate key of the endpoint string.
@@ -110,7 +109,7 @@ models:
           - not_null
 
   - name: mart_endpoint_health
-    description: One row per endpoint with volume, reliability, size, and client metrics.
+    description: Request counts, HTTP errors, response sizes, and client counts per endpoint.
     columns:
       - name: endpoint_key
         description: Endpoint dimension surrogate key.

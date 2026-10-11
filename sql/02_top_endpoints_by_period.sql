@@ -1,4 +1,4 @@
--- Top endpoints in the seven-day period ending at the latest available partition.
+-- The reporting window ends at the latest partition, not the current date.
 WITH period AS (
     SELECT
         MAX(dt_partition) - INTERVAL 6 DAY AS start_date,

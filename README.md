@@ -1,17 +1,8 @@
-# 🚀 Log Analytics Engine
-
-*Turning raw server logs into a compressed, partitioned analytical data lake.*
-
-![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
-![Polars](https://img.shields.io/badge/Polars-Data%20Processing-CD792C?logo=polars&logoColor=white)
-![Parquet](https://img.shields.io/badge/Storage-Apache%20Parquet-50ABF1)
-![DuckDB](https://img.shields.io/badge/Query-DuckDB-FFD700?logo=duckdb&logoColor=black)
-![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)
-![License](https://img.shields.io/badge/license-MIT-green)
+# Log Analytics Engine
 
 [Português (Brasil)](README.pt-BR.md)
 
-Log Analytics Engine converts unstructured access logs into an analysis-ready data lake. It uses vectorized **Regex + Polars** parsing, writes date-partitioned **Apache Parquet**, and isolates rejected records in a traceable quarantine layer. **DuckDB** provides a production-style SQL analytics layer with CTEs, ranking, time-series windows, percentiles, and execution-plan examples.
+Parses HTTP access logs with Polars and writes date-partitioned Parquet. Rejected records go to quarantine with their original lines and rejection reasons. DuckDB runs the SQL queries, and dbt builds the Gold models used by the Streamlit dashboard.
 
 ## Architecture
 
@@ -27,10 +18,7 @@ flowchart LR
     H --> I[Streamlit dashboard]
 ```
 
-1. **Extract** — `generator.py` can create Common Log Format data. `processor.py` lazily scans input, preserves each original line in `raw`, and extracts `ip`, `date`, `method`, `endpoint`, `status`, and `size`.
-2. **Transform and validate** — typed records gain `dt_partition` and `is_error`. Invalid rows receive a `rejection_reason`.
-3. **Load** — valid records are streamed to Hive-style Parquet partitions; rejected records are stored separately.
-4. **Model and analyze** — dbt models the Silver lake into a documented Gold star schema for the dashboard, while DuckDB runs versioned queries from [`sql/`](sql/README.md).
+`generator.py` creates synthetic logs. `processor.py` parses and validates them, then writes the lake and quarantine. dbt builds the Gold tables, while [`sql/`](sql/README.md) contains the DuckDB queries.
 
 ## Project layout
 
@@ -71,7 +59,7 @@ pip install -r requirements.txt
 python -m src.main --generate --lines 10000
 ```
 
-The default production-sized run generates five million lines. For containers, run `docker compose up --build`; the dashboard is exposed at `http://localhost:8501`.
+With `--generate`, the default is five million lines when the input file does not exist. For containers, run `docker compose up --build`; the dashboard is exposed at `http://localhost:8501`.
 
 ## Command-line interface
 
@@ -86,6 +74,27 @@ python -m src.main [OPTIONS]
 | `--quarantine` | `data/processed/quarantine` | Rejected-record output |
 | `--generate` | `False` | Generate input when it does not exist |
 | `--lines` | `5_000_000` | Number of synthetic lines to generate |
+| `--full-refresh` | `False` | Authorize replacing published data with a complete rebuild |
+
+The first run needs no flag when the lake and quarantine are absent or contain no files. Once either destination has files, rebuilding requires `--full-refresh`; without it, the CLI exits with an error and preserves both published outputs.
+
+Use a complete input file for each rebuild. Records absent from it disappear from the published dataset, including old partitions and rejected records. A one-day file replaces the whole dataset; there is no incremental update or append. Repeating the same input with the flag produces the same records and counts. Duplicates already present in the input remain separate records.
+
+```bash
+# First publication, using an existing input file
+python -m src.main --raw data/raw/server.log
+
+# Complete rebuild after updating that file with the entire desired dataset
+python -m src.main --raw data/raw/server.log --full-refresh
+```
+
+The lake and quarantine are prepared in temporary directories beside their destinations. Every Parquet is read back to check its schema and row count before replacement. Parsing, writing, or validation failures preserve published files and remove the temporary directories. The two destinations must be separate directories, with neither nested inside the other.
+
+During publication, previous directories are moved to sibling backups. Both prepared outputs are installed from the same run, including an empty quarantine when no lines are rejected. A publication failure restores the previous directories; backups are removed after both replacements succeed or recovery completes. If recovery fails, the error reports the retained backup paths. Failure to delete a backup after publication is logged without undoing the new output. After a successful recovery, fix the cause and retry with the complete input and `--full-refresh`.
+
+This mechanism supports local execution with one process at a time. Replacing multiple directories is not an atomic transaction for concurrent readers: they may observe missing directories or outputs from different runs during replacement. It does not recover automatically after a process kill or power loss.
+
+Empty input is refused, including with `--full-refresh`. If every line is rejected, the run publishes all lines in quarantine and an empty lake with its schema in `_empty.parquet`; with `--full-refresh`, this replaces the previous dataset.
 
 ## Processed schema
 
@@ -103,11 +112,11 @@ python -m src.main [OPTIONS]
 
 Quality failures are stored in `data/processed/quarantine/quarantine.parquet` with the original line in `raw`, the extracted fields (which may be null), and a `rejection_reason`: `regex_mismatch`, `invalid_status`, `negative_size`, or `invalid_date`. The original line is preserved without its line terminator, including spaces, commas, and quotes, even when parsing fails. Each input line appears exactly once in either the valid output or quarantine, so `total_input = valid_count + quarantine_count`. Tests read the quarantine Parquet and verify the original lines and their rejection reasons.
 
-## Advanced SQL analytics
+## SQL queries
 
-The [`sql/`](sql/README.md) directory contains ten executable DuckDB queries covering daily traffic, period-based top endpoints, `ROW_NUMBER`, `RANK`, `LAG`, `LEAD`, seven-day rolling request/error averages, response-size percentiles, outliers, endpoint share, and status distribution.
+The [`sql/`](sql/README.md) directory contains ten DuckDB queries for daily traffic, top endpoints, rankings, changes between dates, moving averages over seven observed dates, response-size percentiles, outliers, endpoint share, and status distribution.
 
-Generate the lake and run every query:
+Run all queries against an existing lake:
 
 ```bash
 python -m src.query_lake
@@ -120,7 +129,7 @@ python -m src.query_lake --query 03_daily_change --query 05_response_size_percen
 python -m src.query_lake --lake-path '/tmp/logs_lake/**/*.parquet'
 ```
 
-Queries use `read_parquet(..., hive_partitioning = true)`, allowing filters on `dt_partition` to prune partitions. See [`docs/sql-performance.md`](docs/sql-performance.md) for reproducible `EXPLAIN` and `EXPLAIN ANALYZE` workflows.
+Queries use `read_parquet(..., hive_partitioning = true)`, allowing filters on `dt_partition` to prune partitions. See [`docs/sql-performance.md`](docs/sql-performance.md) for `EXPLAIN` and `EXPLAIN ANALYZE` examples.
 
 ## Gold dimensional layer
 
@@ -140,19 +149,22 @@ See [`docs/gold-star-schema.md`](docs/gold-star-schema.md) for grains, relations
 streamlit run src/dashboard.py
 ```
 
-After `dbt build`, the dashboard reads Gold marts for KPIs, endpoint health, and daily traffic; before that it safely reads the Silver Parquet lake. It also shows HTTP status distribution and quarantine statistics.
+After `dbt build`, the dashboard reads Gold marts for KPIs, endpoint health, and daily traffic; before that it reads the Silver Parquet lake. It also shows HTTP status distribution and quarantine statistics.
 
 ## Tests and quality checks
 
 ```bash
 pip install -r requirements-dev.txt
 pytest
+python -m pytest tests/test_reprocessing.py -v
 ruff check src/ tests/
 black --check src/ tests/
 mypy src/
 ```
 
-Tests use temporary directories and do not write to project data. The original five-million-row benchmark produced 18.3 MB of Parquet from a 369.5 MB log (about 95% smaller) at roughly 430,000 rows/second; results vary by environment.
+Tests use temporary directories and do not write to project data. `tests/test_reprocessing.py` runs the CLI and reads the final lake and quarantine Parquets to verify repeated rebuilds, refusal without the flag, complete replacement, and consistent output after parsing, writing, validation, backup, and publication failures. It checks record values, rejection reasons, types, and counts, and retries each failed rebuild.
+
+The original five-million-row benchmark produced 18.3 MB of Parquet from a 369.5 MB log (about 95% smaller) at roughly 430,000 rows/second; results vary by environment.
 
 ## License
 

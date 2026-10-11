@@ -1,4 +1,3 @@
--- Response-size percentiles by endpoint, restricted to meaningful sample sizes.
 WITH endpoint_sizes AS (
     SELECT endpoint, size
     FROM read_parquet('{{lake_path}}', hive_partitioning = true)

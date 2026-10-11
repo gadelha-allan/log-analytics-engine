@@ -1,6 +1,6 @@
 # DuckDB SQL performance and execution plans
 
-This guide makes the analytical layer measurable and reproducible. Run the pipeline first so the examples can inspect real Parquet partitions:
+Generate the Parquet lake before running these DuckDB plan examples:
 
 ```bash
 python -m src.main --generate --lines 1000000
@@ -105,7 +105,7 @@ HASH_GROUP_BY
 
 The scan should project only `endpoint` and `size`, avoiding decompression of unrelated columns. Exact continuous percentiles cost more than simple aggregates; benchmark approximate quantiles at very large scale if bounded approximation is acceptable.
 
-## Benchmark discipline
+## Comparing runs
 
 1. Record DuckDB version, row count, Parquet size, hardware, and cache state.
 2. Run each query several times and report median wall time.
