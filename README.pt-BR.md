@@ -71,17 +71,21 @@ python -m src.main --help
 | `--lines` | `5_000_000` | Quantidade de linhas para geração |
 | `--full-refresh` | `False` | Autoriza substituir o conjunto publicado |
 
-A primeira execução é permitida quando o lake e a quarentena não contêm arquivos. Se já houver arquivos, executar sem `--full-refresh` retorna erro e mantém a saída anterior intacta.
+A primeira execução dispensa a flag quando o lake e a quarentena não existem ou não contêm arquivos. Se algum dos destinos já tiver arquivos, a reconstrução exige `--full-refresh`; sem ela, a CLI retorna erro e mantém as duas saídas anteriores intactas.
 
-Com a flag, a entrada substitui todo o conjunto publicado. Ela precisa conter todos os registros que você deseja manter. Um arquivo com apenas um dia substitui o conjunto anterior; não faz atualização incremental.
+Cada reconstrução exige uma entrada completa. Registros ausentes dela deixam de ser publicados, incluindo partições antigas e rejeitados. Um arquivo com apenas um dia substitui todo o conjunto; não há atualização incremental nem acréscimo à saída anterior. Repetir a mesma entrada com a flag produz os mesmos registros e contagens. Duplicatas que já existem na entrada continuam como registros separados.
 
 ```bash
+# Primeira publicação, usando um arquivo de entrada existente
+python -m src.main --raw data/raw/server.log
+
+# Reconstrução após atualizar esse arquivo com todo o conjunto desejado
 python -m src.main --raw data/raw/server.log --full-refresh
 ```
 
 O lake e a quarentena são preparados em diretórios temporários ao lado dos destinos. Todos os Parquets são relidos para conferir schema e contagem antes da substituição. Falhas de parsing, escrita ou validação preservam os arquivos publicados e removem os temporários. Os destinos precisam ser separados, sem um dentro do outro.
 
-Durante a publicação, os diretórios anteriores são movidos para backups ao lado dos destinos. As duas saídas preparadas vêm da mesma execução, incluindo uma quarentena vazia quando não há rejeitados. Uma falha na publicação restaura os diretórios anteriores; os backups são removidos após concluir as duas substituições ou a recuperação. Se a recuperação falhar, o erro informa os caminhos dos backups preservados. Falhas ao apagar um backup após a publicação são registradas sem desfazer a nova saída.
+Durante a publicação, os diretórios anteriores são movidos para backups ao lado dos destinos. As duas saídas preparadas vêm da mesma execução, incluindo uma quarentena vazia quando não há rejeitados. Uma falha na publicação restaura os diretórios anteriores; os backups são removidos após concluir as duas substituições ou a recuperação. Se a recuperação falhar, o erro informa os caminhos dos backups preservados. Falhas ao apagar um backup após a publicação são registradas sem desfazer a nova saída. Após uma recuperação bem-sucedida, corrija a causa e tente novamente com a entrada completa e `--full-refresh`.
 
 O mecanismo atende à execução local, com um processo por vez. A troca de vários diretórios não é uma transação atômica para leitores concorrentes: durante a substituição, eles podem encontrar diretórios ausentes ou saídas de execuções diferentes. Não há recuperação automática após encerramento forçado do processo ou queda de energia.
 
@@ -157,12 +161,15 @@ O dashboard consulta as agregações Gold quando disponíveis e usa o lake Silve
 pip install -r requirements-dev.txt
 python -m pytest
 python -m pytest tests/test_processor.py -v
+python -m pytest tests/test_reprocessing.py -v
 ruff check src/ tests/
 black --check src/ tests/
 mypy src/
 ```
 
 Os testes usam diretórios temporários. Conferem campos extraídos, tipos, motivos de rejeição, conteúdo da quarentena, conservação das contagens e recusa de reprocessamento sem `--full-refresh`.
+
+`tests/test_reprocessing.py` executa a CLI e lê os Parquets finais do lake e da quarentena. Confere reconstruções repetidas, recusa sem a flag, substituição completa e consistência após falhas de parsing, escrita, validação, backup e publicação. Verifica valores, motivos de rejeição, tipos e contagens, além de repetir cada reconstrução que falhou.
 
 A CI executa lint, formatação, Mypy e testes em Python 3.10, 3.11 e 3.12. Também constrói a imagem Docker e executa o pipeline com mil registros.
 

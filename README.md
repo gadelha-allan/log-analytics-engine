@@ -76,15 +76,21 @@ python -m src.main [OPTIONS]
 | `--lines` | `5_000_000` | Number of synthetic lines to generate |
 | `--full-refresh` | `False` | Authorize replacing published data with a complete rebuild |
 
-The first run is allowed when the lake and quarantine contain no files. Later runs require `--full-refresh`; without it, the CLI exits with an error and preserves the published files. The input must contain the entire dataset to publish. A file containing only one day replaces the previous dataset when the flag is supplied.
+The first run needs no flag when the lake and quarantine are absent or contain no files. Once either destination has files, rebuilding requires `--full-refresh`; without it, the CLI exits with an error and preserves both published outputs.
+
+Use a complete input file for each rebuild. Records absent from it disappear from the published dataset, including old partitions and rejected records. A one-day file replaces the whole dataset; there is no incremental update or append. Repeating the same input with the flag produces the same records and counts. Duplicates already present in the input remain separate records.
 
 ```bash
+# First publication, using an existing input file
+python -m src.main --raw data/raw/server.log
+
+# Complete rebuild after updating that file with the entire desired dataset
 python -m src.main --raw data/raw/server.log --full-refresh
 ```
 
 The lake and quarantine are prepared in temporary directories beside their destinations. Every Parquet is read back to check its schema and row count before replacement. Parsing, writing, or validation failures preserve published files and remove the temporary directories. The two destinations must be separate directories, with neither nested inside the other.
 
-During publication, previous directories are moved to sibling backups. Both prepared outputs are installed from the same run, including an empty quarantine when no lines are rejected. A publication failure restores the previous directories; backups are removed after both replacements succeed or recovery completes. If recovery fails, the error reports the retained backup paths. Failure to delete a backup after publication is logged without undoing the new output.
+During publication, previous directories are moved to sibling backups. Both prepared outputs are installed from the same run, including an empty quarantine when no lines are rejected. A publication failure restores the previous directories; backups are removed after both replacements succeed or recovery completes. If recovery fails, the error reports the retained backup paths. Failure to delete a backup after publication is logged without undoing the new output. After a successful recovery, fix the cause and retry with the complete input and `--full-refresh`.
 
 This mechanism supports local execution with one process at a time. Replacing multiple directories is not an atomic transaction for concurrent readers: they may observe missing directories or outputs from different runs during replacement. It does not recover automatically after a process kill or power loss.
 
@@ -150,12 +156,15 @@ After `dbt build`, the dashboard reads Gold marts for KPIs, endpoint health, and
 ```bash
 pip install -r requirements-dev.txt
 pytest
+python -m pytest tests/test_reprocessing.py -v
 ruff check src/ tests/
 black --check src/ tests/
 mypy src/
 ```
 
-Tests use temporary directories and do not write to project data. The original five-million-row benchmark produced 18.3 MB of Parquet from a 369.5 MB log (about 95% smaller) at roughly 430,000 rows/second; results vary by environment.
+Tests use temporary directories and do not write to project data. `tests/test_reprocessing.py` runs the CLI and reads the final lake and quarantine Parquets to verify repeated rebuilds, refusal without the flag, complete replacement, and consistent output after parsing, writing, validation, backup, and publication failures. It checks record values, rejection reasons, types, and counts, and retries each failed rebuild.
+
+The original five-million-row benchmark produced 18.3 MB of Parquet from a 369.5 MB log (about 95% smaller) at roughly 430,000 rows/second; results vary by environment.
 
 ## License
 
