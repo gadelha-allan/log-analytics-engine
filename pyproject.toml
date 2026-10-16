@@ -61,5 +61,5 @@ check_untyped_defs = true
 show_error_codes = true
 
 [[tool.mypy.overrides]]
-module = ["plotly", "plotly.*"]
+module = ["plotly", "plotly.*", "pyarrow", "pyarrow.*"]
 ignore_missing_imports = true

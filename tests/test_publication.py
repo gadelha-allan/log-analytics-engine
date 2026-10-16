@@ -45,7 +45,9 @@ def test_falha_na_substituicao_restaura_parquets_anteriores(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     output, quarantine = temp_output_dirs
-    previous = process_logs(mock_log_file, output, quarantine)
+    process_logs(mock_log_file, output, quarantine)
+    previous_valid = pl.read_parquet(list(output.rglob("*.parquet")))
+    previous_quarantine = pl.read_parquet(quarantine / "quarantine.parquet")
     before = _snapshot(output, quarantine)
     replacement = tmp_path / "replacement.log"
     replacement.write_text(
@@ -82,11 +84,11 @@ def test_falha_na_substituicao_restaura_parquets_anteriores(
     assert _snapshot(output, quarantine) == before
     assert (
         pl.read_parquet(list(output.rglob("*.parquet"))).to_dicts()
-        == previous["valid"].to_dicts()
+        == previous_valid.to_dicts()
     )
     assert (
         pl.read_parquet(quarantine / "quarantine.parquet").to_dicts()
-        == previous["quarantine"].to_dicts()
+        == previous_quarantine.to_dicts()
     )
     assert "Preparacao validada" in caplog.text
     assert "Iniciando recuperacao" in caplog.text
@@ -142,14 +144,15 @@ def test_backups_retidos_ate_publicacao_dos_dois_destinos(
     assert pl.read_parquet(list(output.rglob("*.parquet")))["raw"].to_list() == [
         valid_line
     ]
-    assert processed["valid"]["size"].to_list() == [3_000_000_000]
+    lake = pl.read_parquet(list(Path(processed["lake_path"]).rglob("*.parquet")))
+    assert lake["size"].to_list() == [3_000_000_000]
     assert not (output / "dt_partition=2026-07-27").exists()
     if rejected:
         assert pl.read_parquet(quarantine / "quarantine.parquet").select(
             "raw", "rejection_reason"
         ).rows() == [(rejected_line, "regex_mismatch")]
     else:
-        assert processed["quarantine"] is None
+        assert processed["quarantine_path"] == str(quarantine)
         assert list(quarantine.iterdir()) == []
     messages = caplog.text
     assert messages.index("Preparacao validada") < messages.index("Preservando")
@@ -300,7 +303,8 @@ def test_falha_ao_limpar_backup_nao_desfaz_publicacao_concluida(
     with caplog.at_level(logging.INFO):
         processed = process_logs(replacement, output, quarantine, full_refresh=True)
 
-    assert processed["valid"]["raw"].to_list() == [valid_line]
+    lake = pl.read_parquet(list(Path(processed["lake_path"]).rglob("*.parquet")))
+    assert lake["raw"].to_list() == [valid_line]
     assert _backups(output)
     assert not _backups(quarantine)
     assert "Nao foi possivel remover o backup" in caplog.text

@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
+import pyarrow.parquet as pq
 from polars.exceptions import ComputeError
 
 from .publication import publish_outputs
@@ -43,12 +44,14 @@ _LOG_SCHEMA = pl.Schema(
     }
 )
 _QUARANTINE_SCHEMA = pl.Schema({**_LOG_SCHEMA, "rejection_reason": pl.String()})
+_VALIDATION_BATCH_SIZE = 65_536
 
 
 def _validate_prepared_output(
     directory: Path, expected_schema: pl.Schema, expected_count: int
-) -> pl.DataFrame:
+) -> None:
     parquet_files = sorted(directory.rglob("*.parquet"))
+    actual_count = 0
     for parquet_file in parquet_files:
         schema = pl.scan_parquet(parquet_file, hive_partitioning=False).collect_schema()
         if schema != expected_schema:
@@ -57,18 +60,15 @@ def _validate_prepared_output(
                 f"esperado {expected_schema}, encontrado {schema}"
             )
 
-    # Read the data pages as well as metadata before replacing published files.
-    prepared = (
-        pl.read_parquet(parquet_files, hive_partitioning=False)
-        if parquet_files
-        else pl.DataFrame(schema=expected_schema)
-    )
-    if prepared.height != expected_count:
+        # Metadata alone would miss corruption in the data pages.
+        with pq.ParquetFile(parquet_file) as parquet:
+            for batch in parquet.iter_batches(batch_size=_VALIDATION_BATCH_SIZE):
+                actual_count += batch.num_rows
+    if actual_count != expected_count:
         raise ValueError(
             f"Contagem invalida em {directory}: "
-            f"esperados {expected_count} registros, encontrados {prepared.height}"
+            f"esperados {expected_count} registros, encontrados {actual_count}"
         )
-    return prepared
 
 
 def _extract_and_type(lf: LazyFrame) -> LazyFrame:
@@ -234,8 +234,8 @@ def process_logs(
                 logger.info("Preparando quarentena em %s", quarantine_stage)
                 lf_quarantine.sink_parquet(quarantine_stage / "quarantine.parquet")
 
-            valid = _validate_prepared_output(lake_stage, _LOG_SCHEMA, valid_count)
-            quarantine = _validate_prepared_output(
+            _validate_prepared_output(lake_stage, _LOG_SCHEMA, valid_count)
+            _validate_prepared_output(
                 quarantine_stage, _QUARANTINE_SCHEMA, quarantine_count
             )
             logger.info(
@@ -248,8 +248,8 @@ def process_logs(
             )
 
         return {
-            "valid": valid,
-            "quarantine": quarantine if quarantine_count else None,
+            "lake_path": str(output_dir),
+            "quarantine_path": str(quarantine_dir),
             "metrics": {
                 "total_input": total_input,
                 "valid_count": valid_count,

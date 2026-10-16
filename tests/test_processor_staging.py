@@ -6,7 +6,6 @@ from pathlib import Path
 import polars as pl
 import pytest
 from polars.exceptions import ComputeError
-from polars.testing import assert_frame_equal
 
 from src import processor
 
@@ -119,7 +118,7 @@ def test_falha_na_preparacao_preserva_publicacao_e_limpa_temporarios(
     elif failure == "accounting":
         monkeypatch.setattr(processor, "_apply_quality_rules", drop_valid_rows)
     elif failure == "readback":
-        monkeypatch.setattr(pl, "read_parquet", fail_readback)
+        monkeypatch.setattr(processor.pq.ParquetFile, "iter_batches", fail_readback)
 
     with pytest.raises(exception, match=message):
         processor.process_logs(replacement, output, quarantine, full_refresh=True)
@@ -150,10 +149,9 @@ def test_publicacao_aguarda_validacao_dos_dois_diretorios(
         target = (output, quarantine)[len(prepared_outputs)]
         assert directory != target
         assert directory.parent == target.parent
-        prepared = validate(directory, schema, count)
-        prepared_outputs.append(prepared)
+        validate(directory, schema, count)
+        prepared_outputs.append(count)
         assert _published_files(output, quarantine) == before
-        return prepared
 
     monkeypatch.setattr(
         processor, "_validate_prepared_output", validate_while_published
@@ -162,19 +160,18 @@ def test_publicacao_aguarda_validacao_dos_dois_diretorios(
         replacement, output, quarantine, full_refresh=True
     )
 
-    assert len(prepared_outputs) == 2
-    assert_frame_equal(processed["valid"], prepared_outputs[0])
-    assert_frame_equal(processed["quarantine"], prepared_outputs[1])
-    assert_frame_equal(
-        pl.read_parquet(list(output.rglob("*.parquet"))), processed["valid"]
+    assert prepared_outputs == [2, 3]
+    lake = pl.read_parquet(list(Path(processed["lake_path"]).rglob("*.parquet")))
+    rejected = pl.read_parquet(
+        Path(processed["quarantine_path"]) / "quarantine.parquet"
     )
-    assert_frame_equal(
-        pl.read_parquet(quarantine / "quarantine.parquet"), processed["quarantine"]
+    assert lake.height == 2
+    assert rejected.height == 3
+    assert Counter(lake["raw"].to_list() + rejected["raw"].to_list()) == Counter(
+        replacement.read_text().splitlines()
     )
     assert not (output / "dt_partition=2026-07-27").exists()
-    assert processed["metrics"]["total_input"] == (
-        processed["valid"].height + processed["quarantine"].height
-    )
+    assert processed["metrics"]["total_input"] == (lake.height + rejected.height)
     _assert_no_staging(output, quarantine)
 
 
@@ -208,7 +205,8 @@ def test_entrada_inteiramente_rejeitada_publica_lake_vazio_com_schema(
     temp_output_dirs: tuple[Path, Path],
 ) -> None:
     output, quarantine = temp_output_dirs
-    previous = processor.process_logs(mock_log_file, output, quarantine)
+    processor.process_logs(mock_log_file, output, quarantine)
+    previous_schema = pl.read_parquet(list(output.rglob("*.parquet"))).schema
     rejected_lines = ['  linha, com "aspas"  ', "", "outra linha", "outra linha"]
     rejected_input = tmp_path / "rejected.log"
     rejected_input.write_text("\n".join(rejected_lines) + "\n")
@@ -219,8 +217,8 @@ def test_entrada_inteiramente_rejeitada_publica_lake_vazio_com_schema(
 
     lake = pl.read_parquet(list(output.rglob("*.parquet")))
     assert lake.is_empty()
-    assert lake.schema == previous["valid"].schema
-    assert_frame_equal(lake, processed["valid"])
+    assert lake.schema == previous_schema
+    assert processed["lake_path"] == str(output)
     assert not list(output.glob("dt_partition=*"))
     rejected = pl.read_parquet(quarantine / "quarantine.parquet")
     assert Counter(rejected.select("raw", "rejection_reason").rows()) == Counter(

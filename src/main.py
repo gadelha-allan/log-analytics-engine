@@ -42,7 +42,7 @@ def run_pipeline(
 
     try:
         logger.info("Processando %s", raw_path)
-        processed_logs = process_logs(
+        publication = process_logs(
             file_path=raw_path,
             output_dir=processed_dir,
             quarantine_dir=quarantine_dir,
@@ -50,10 +50,12 @@ def run_pipeline(
         )
 
         elapsed = time.perf_counter() - start_time
-        metrics = processed_logs["metrics"]
+        metrics = publication["metrics"]
         throughput = metrics["valid_count"] / elapsed if elapsed > 0 else 0
 
         logger.info("Pipeline concluido: %s", raw_path)
+        logger.info("Lake publicado em %s", publication["lake_path"])
+        logger.info("Quarentena publicada em %s", publication["quarantine_path"])
         logger.info("Tempo total: %.2f s", elapsed)
         logger.info("Linhas de entrada: %s", f'{metrics["total_input"]:,}')
         logger.info("Linhas validas: %s", f'{metrics["valid_count"]:,}')
@@ -64,7 +66,7 @@ def run_pipeline(
         )
         logger.info("Linhas por segundo: %s", f"{throughput:,.0f}")
 
-        return processed_logs
+        return publication
 
     except FullRefreshRequiredError as exc:
         logger.error("%s", exc)
